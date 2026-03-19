@@ -1,0 +1,64 @@
+# =========================
+# BUILD FILES
+# =========================
+/build/
+/dist/
+/out/
+/target/
+
+# =========================
+# NETBEANS FILES
+# =========================
+/nbproject/private/
+/nbproject/private/private.properties
+/nbproject/private/private.xml
+/nbproject/private/config.properties
+
+# =========================
+# COMPILED FILES
+# =========================
+*.class
+*.jar
+*.war
+*.ear
+
+# =========================
+# LOG FILES
+# =========================
+*.log
+
+# =========================
+# ENV FILES (IMPORTANT 🔥)
+# =========================
+.env
+.env.*
+
+# =========================
+# OS FILES
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# IDE FILES (OPTIONAL)
+# =========================
+.idea/
+.vscode/
+
+# =========================
+# TEMP FILES
+# =========================
+*.tmp
+*.swp
+
+# =========================
+# DATABASE FILES (IF ANY)
+# =========================
+*.db
+*.sqlite
+
+# =========================
+# MISC
+# =========================
+*.bak
+*.backup
