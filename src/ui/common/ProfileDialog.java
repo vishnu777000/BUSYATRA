@@ -4,6 +4,7 @@ import config.UIConfig;
 import dao.WalletDAO;
 import ui.auth.LoginFrame;
 import util.Session;
+import util.SessionManager;
 
 import javax.swing.*;
 import java.awt.*;
@@ -102,6 +103,7 @@ public class ProfileDialog extends JDialog {
 
         logoutBtn.addActionListener(e -> {
             dispose();
+            SessionManager.clear();
             Session.clear();
             frame.dispose();
             new LoginFrame().setVisible(true);

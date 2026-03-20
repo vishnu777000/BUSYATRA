@@ -97,10 +97,10 @@ public void refreshData(){
 
             String operator = r[2];
             String busType  = r[3];
-            String dep      = r[4];
-            String arr      = r[5];
-            double fare     = Double.parseDouble(r[6]);
-            int seats       = Integer.parseInt(r[7]);
+            double fare     = Double.parseDouble(r[4]);
+            String dep      = r[5];
+            String arr      = r[6];
+            int seats       = Integer.parseInt(r[9]);
 
             BusCardPanel card = new BusCardPanel(
                     scheduleId,

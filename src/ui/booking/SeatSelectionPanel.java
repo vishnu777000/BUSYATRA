@@ -4,13 +4,16 @@ import config.UIConfig;
 import dao.SeatDAO;
 import dao.SeatLockDAO;
 import ui.common.MainFrame;
+import ui.common.SeatButton;
 import util.BookingContext;
 import util.Refreshable;
 import util.Session;
 
 import javax.swing.*;
 import java.awt.*;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 public class SeatSelectionPanel extends JPanel implements Refreshable {
@@ -23,78 +26,68 @@ public class SeatSelectionPanel extends JPanel implements Refreshable {
     private Set<String> unavailableSeats = new HashSet<>();
     private final Set<String> selectedSeats = new HashSet<>();
 
-    private static final int SEAT_SIZE = 36;
     private static final int MAX_SEATS = 6;
 
     private JLabel payableLabel;
     private JLabel selectedLabel;
+    private JLabel loadingLabel;
 
-    private final Color AVAILABLE = new Color(232,245,233);
-    private final Color SELECTED = new Color(0,150,136);
-    private final Color BOOKED = new Color(210,210,210);
+    private final Color AVAILABLE = new Color(232, 245, 233);
+    private final Color SELECTED = new Color(0, 150, 136);
+    private final Color BOOKED = new Color(220, 53, 69);
 
     public SeatSelectionPanel(MainFrame frame) {
-
         this.frame = frame;
 
-        setLayout(new BorderLayout(15,15));
+        setLayout(new BorderLayout(15, 15));
         setBackground(UIConfig.BACKGROUND);
-        setBorder(BorderFactory.createEmptyBorder(20,20,20,20));
+        setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
 
-        add(header(),BorderLayout.NORTH);
-        add(centerPanel(),BorderLayout.CENTER);
-        add(bottomBar(),BorderLayout.SOUTH);
+        add(header(), BorderLayout.NORTH);
+        add(centerPanel(), BorderLayout.CENTER);
+        add(bottomBar(), BorderLayout.SOUTH);
     }
 
-    /* ================= HEADER ================= */
-
-    private JComponent header(){
-
+    private JComponent header() {
         JPanel panel = new JPanel(new BorderLayout());
         panel.setOpaque(false);
 
-        JButton back = new JButton("← Back");
+        JButton back = new JButton("< Back");
         UIConfig.secondaryBtn(back);
-
         back.addActionListener(e -> frame.goBack());
 
         JLabel title = new JLabel(
-                BookingContext.fromStop + " → " + BookingContext.toStop,
+                BookingContext.fromStop + " -> " + BookingContext.toStop,
                 SwingConstants.CENTER
         );
-
         title.setFont(UIConfig.FONT_SUBTITLE);
 
-        panel.add(back,BorderLayout.WEST);
-        panel.add(title,BorderLayout.CENTER);
-        panel.add(legend(),BorderLayout.EAST);
+        panel.add(back, BorderLayout.WEST);
+        panel.add(title, BorderLayout.CENTER);
+        panel.add(legend(), BorderLayout.EAST);
 
         return panel;
     }
 
-    /* ================= LEGEND ================= */
-
-    private JPanel legend(){
-
+    private JPanel legend() {
         JPanel legend = new JPanel(new FlowLayout());
         legend.setOpaque(false);
 
-        legend.add(colorBox(AVAILABLE,"Available"));
-        legend.add(colorBox(SELECTED,"Selected"));
-        legend.add(colorBox(BOOKED,"Booked"));
+        legend.add(colorBox(AVAILABLE, "Available"));
+        legend.add(colorBox(SELECTED, "Selected"));
+        legend.add(colorBox(BOOKED, "Booked/Locked"));
 
         return legend;
     }
 
-    private JPanel colorBox(Color color,String text){
-
-        JPanel p = new JPanel(new FlowLayout(FlowLayout.LEFT,4,0));
+    private JPanel colorBox(Color color, String text) {
+        JPanel p = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
         p.setOpaque(false);
 
         JLabel box = new JLabel();
         box.setOpaque(true);
         box.setBackground(color);
-        box.setPreferredSize(new Dimension(14,14));
+        box.setPreferredSize(new Dimension(14, 14));
 
         JLabel lbl = new JLabel(text);
         lbl.setFont(UIConfig.FONT_SMALL);
@@ -105,152 +98,180 @@ public class SeatSelectionPanel extends JPanel implements Refreshable {
         return p;
     }
 
-    /* ================= CENTER ================= */
-
-    private JComponent centerPanel(){
-
-        JPanel panel = new JPanel(new BorderLayout(10,10));
+    private JComponent centerPanel() {
+        JPanel panel = new JPanel(new BorderLayout(10, 10));
         panel.setOpaque(false);
 
         panel.add(
-                new RouteTimelinePanel(BookingContext.routeId),
+                new RouteTimelinePanel(
+                        BookingContext.routeId,
+                        BookingContext.scheduleId,
+                        BookingContext.fromStop,
+                        BookingContext.toStop
+                ),
                 BorderLayout.NORTH
         );
 
-        panel.add(scrollSeats(),BorderLayout.CENTER);
+        panel.add(scrollSeats(), BorderLayout.CENTER);
+        return panel;
+    }
+
+    private JComponent loadingCenter() {
+        JPanel panel = new JPanel(new GridBagLayout());
+        panel.setOpaque(false);
+
+        loadingLabel = new JLabel("Loading seat configuration...");
+        loadingLabel.setFont(UIConfig.FONT_SUBTITLE);
+        loadingLabel.setForeground(UIConfig.TEXT_LIGHT);
+        panel.add(loadingLabel);
 
         return panel;
     }
 
-    private JComponent scrollSeats(){
-
+    private JComponent scrollSeats() {
         JScrollPane sp = new JScrollPane(seatLayout());
-
         sp.setBorder(null);
         sp.getViewport().setBackground(UIConfig.BACKGROUND);
         sp.getVerticalScrollBar().setUnitIncrement(16);
-
         return sp;
     }
 
-    /* ================= SEAT LAYOUT ================= */
-
-    private JPanel seatLayout(){
-
+    private JPanel seatLayout() {
         JPanel busBody = new JPanel();
-        busBody.setLayout(new BoxLayout(busBody,BoxLayout.Y_AXIS));
+        busBody.setLayout(new BoxLayout(busBody, BoxLayout.Y_AXIS));
         busBody.setBackground(Color.WHITE);
-
         busBody.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(new Color(200,200,200),2),
-                BorderFactory.createEmptyBorder(25,40,25,40)
+                BorderFactory.createLineBorder(new Color(200, 200, 200), 2),
+                BorderFactory.createEmptyBorder(20, 28, 22, 28)
         ));
 
-        JLabel driver = new JLabel("DRIVER",SwingConstants.CENTER);
-        driver.setOpaque(true);
-        driver.setBackground(new Color(220,220,220));
-        driver.setFont(new Font("Segoe UI",Font.BOLD,12));
-        driver.setBorder(BorderFactory.createEmptyBorder(6,20,6,20));
+        JPanel topStrip = new JPanel(new BorderLayout());
+        topStrip.setOpaque(false);
 
-        busBody.add(driver);
-        busBody.add(Box.createVerticalStrut(15));
+        JLabel left = new JLabel("Driver", SwingConstants.CENTER);
+        left.setOpaque(true);
+        left.setBackground(new Color(232, 236, 240));
+        left.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        left.setBorder(BorderFactory.createEmptyBorder(5, 14, 5, 14));
 
-        int seatNo = 1;
-        int total = BookingContext.totalSeats;
+        JLabel right = new JLabel("Door", SwingConstants.CENTER);
+        right.setOpaque(true);
+        right.setBackground(new Color(246, 248, 250));
+        right.setFont(UIConfig.FONT_SMALL);
+        right.setBorder(BorderFactory.createEmptyBorder(5, 14, 5, 14));
 
-        while(seatNo <= total-5){
-            busBody.add(seatRow(seatNo));
-            busBody.add(Box.createVerticalStrut(10));
-            seatNo += 4;
+        topStrip.add(left, BorderLayout.WEST);
+        topStrip.add(right, BorderLayout.EAST);
+
+        busBody.add(topStrip);
+        busBody.add(Box.createVerticalStrut(14));
+
+        int totalSeats = Math.max(0, BookingContext.totalSeats);
+        if (totalSeats == 0) {
+            JLabel noSeats = new JLabel("No seat configuration available for this bus", SwingConstants.CENTER);
+            noSeats.setFont(UIConfig.FONT_SMALL);
+            noSeats.setForeground(UIConfig.TEXT_LIGHT);
+            noSeats.setAlignmentX(Component.CENTER_ALIGNMENT);
+            busBody.add(noSeats);
+        } else {
+            for (JComponent row : buildSeatRows(totalSeats)) {
+                busBody.add(row);
+                busBody.add(Box.createVerticalStrut(8));
+            }
         }
-
-        busBody.add(lastRow(total));
 
         JPanel wrapper = new JPanel(new FlowLayout(FlowLayout.CENTER));
         wrapper.setOpaque(false);
         wrapper.add(busBody);
-
         return wrapper;
     }
 
-    /* ================= ROW ================= */
+    private List<JComponent> buildSeatRows(int totalSeats) {
+        List<JComponent> rows = new ArrayList<>();
 
-    private JComponent seatRow(int start){
+        int fullRows = totalSeats / 4;
+        int remainder = totalSeats % 4;
+        int seatNumber = 1;
 
-        JPanel row = new JPanel(new GridBagLayout());
+        for (int rowNumber = 1; rowNumber <= fullRows; rowNumber++) {
+            rows.add(seatRow(rowNumber, seatNumber, 4));
+            seatNumber += 4;
+        }
+
+        if (remainder > 0) {
+            rows.add(seatRow(fullRows + 1, seatNumber, remainder));
+        }
+
+        return rows;
+    }
+
+    private JComponent seatRow(int rowNumber, int seatStart, int count) {
+        JPanel row = new JPanel(new BorderLayout());
         row.setOpaque(false);
+
+        JLabel rowLabel = new JLabel(String.format("R%02d", rowNumber));
+        rowLabel.setFont(UIConfig.FONT_SMALL);
+        rowLabel.setForeground(UIConfig.TEXT_LIGHT);
+        rowLabel.setPreferredSize(new Dimension(34, 34));
+
+        JPanel seatsWrap = new JPanel(new GridBagLayout());
+        seatsWrap.setOpaque(false);
 
         GridBagConstraints c = new GridBagConstraints();
-        c.insets = new Insets(3,6,3,6);
+        c.insets = new Insets(3, 4, 3, 4);
 
-        c.gridx=0; row.add(seatBtn("S"+start),c);
-        c.gridx=1; row.add(seatBtn("S"+(start+1)),c);
+        int added = 0;
 
-        c.gridx=2;
-        row.add(Box.createHorizontalStrut(60),c);
+        c.gridx = 0;
+        if (added < count) {
+            seatsWrap.add(seatBtn("S" + (seatStart + added)), c);
+            added++;
+        }
 
-        c.gridx=3; row.add(seatBtn("S"+(start+2)),c);
-        c.gridx=4; row.add(seatBtn("S"+(start+3)),c);
+        c.gridx = 1;
+        if (added < count) {
+            seatsWrap.add(seatBtn("S" + (seatStart + added)), c);
+            added++;
+        }
+
+        c.gridx = 2;
+        seatsWrap.add(Box.createHorizontalStrut(56), c);
+
+        c.gridx = 3;
+        if (added < count) {
+            seatsWrap.add(seatBtn("S" + (seatStart + added)), c);
+            added++;
+        }
+
+        c.gridx = 4;
+        if (added < count) {
+            seatsWrap.add(seatBtn("S" + (seatStart + added)), c);
+        }
+
+        row.add(rowLabel, BorderLayout.WEST);
+        row.add(seatsWrap, BorderLayout.CENTER);
 
         return row;
     }
 
-    private JComponent lastRow(int total){
+    private JButton seatBtn(String seatNo) {
+        SeatButton btn = new SeatButton(seatNo);
+        btn.setFont(new Font("Segoe UI", Font.BOLD, 11));
 
-        JPanel row = new JPanel(new FlowLayout(FlowLayout.CENTER,8,10));
-        row.setOpaque(false);
-
-        for(int i=total-4;i<=total;i++){
-            row.add(seatBtn("S"+i));
+        if (unavailableSeats.contains(seatNo)) {
+            btn.setState(SeatButton.State.BOOKED);
+            btn.setEnabled(false);
+            return btn;
         }
 
-        return row;
+        btn.setState(SeatButton.State.AVAILABLE);
+        btn.addActionListener(e -> toggleSeat(btn, seatNo));
+
+        return btn;
     }
 
-    /* ================= SEAT BUTTON ================= */
-
-    private JButton seatBtn(String seatNo){
-
-        JButton b = new JButton(seatNo);
-
-        b.setPreferredSize(new Dimension(SEAT_SIZE,SEAT_SIZE));
-        b.setFont(new Font("Segoe UI",Font.BOLD,11));
-        b.setFocusPainted(false);
-
-        b.setBorder(BorderFactory.createLineBorder(new Color(210,210,210)));
-        b.setBackground(AVAILABLE);
-
-        if(unavailableSeats.contains(seatNo)){
-
-            b.setBackground(BOOKED);
-            b.setForeground(Color.WHITE);
-            b.setEnabled(false);
-
-        }else{
-
-            b.addActionListener(e -> toggleSeat(b,seatNo));
-
-            b.addMouseListener(new java.awt.event.MouseAdapter() {
-                public void mouseEntered(java.awt.event.MouseEvent evt) {
-                    if(!selectedSeats.contains(seatNo))
-                        b.setBackground(new Color(200,230,201));
-                }
-                public void mouseExited(java.awt.event.MouseEvent evt) {
-                    if(!selectedSeats.contains(seatNo))
-                        b.setBackground(AVAILABLE);
-                }
-            });
-        }
-
-        return b;
-    }
-
-    /* ================= TOGGLE ================= */
-
-    private void toggleSeat(JButton b,String seatNo){
-
-        if(selectedSeats.contains(seatNo)){
-
+    private void toggleSeat(SeatButton btn, String seatNo) {
+        if (selectedSeats.contains(seatNo)) {
             selectedSeats.remove(seatNo);
             BookingContext.removeSeat(seatNo);
 
@@ -260,70 +281,61 @@ public class SeatSelectionPanel extends JPanel implements Refreshable {
                     Session.userId
             );
 
-            b.setBackground(AVAILABLE);
-            b.setForeground(Color.BLACK);
+            btn.setState(SeatButton.State.AVAILABLE);
 
-        }else{
-
-            if(selectedSeats.size() >= MAX_SEATS){
-                JOptionPane.showMessageDialog(this,"Max 6 seats allowed");
+        } else {
+            if (selectedSeats.size() >= MAX_SEATS) {
+                JOptionPane.showMessageDialog(this, "Max 6 seats allowed");
                 return;
             }
 
-            if(seatLockDAO.isSeatLocked(
-                    BookingContext.scheduleId,seatNo)){
-                JOptionPane.showMessageDialog(this,"Seat already locked");
+            if (seatLockDAO.isSeatLocked(
+                    BookingContext.scheduleId,
+                    seatNo,
+                    BookingContext.fromOrder,
+                    BookingContext.toOrder
+            )) {
+                JOptionPane.showMessageDialog(this, "Seat already locked by another user");
                 return;
             }
 
             boolean locked = seatLockDAO.lockSeat(
                     BookingContext.scheduleId,
                     seatNo,
-                    Session.userId
+                    Session.userId,
+                    BookingContext.fromOrder,
+                    BookingContext.toOrder
             );
 
-            if(!locked){
-                JOptionPane.showMessageDialog(this,"Lock failed");
+            if (!locked) {
+                JOptionPane.showMessageDialog(this, "Unable to hold seat right now");
                 return;
             }
 
             selectedSeats.add(seatNo);
             BookingContext.addSeat(seatNo);
-
-            b.setBackground(SELECTED);
-            b.setForeground(Color.WHITE);
+            btn.setState(SeatButton.State.SELECTED);
         }
 
         updatePayable();
     }
 
-    /* ================= PAYABLE ================= */
-
-    private void updatePayable(){
-
-        selectedLabel.setText(
-                "Seats : " + BookingContext.getSeatListString()
-        );
-
-        payableLabel.setText(
-                "Total : ₹ " + BookingContext.getFinalAmount()
-        );
+    private void updatePayable() {
+        selectedLabel.setText("Seats : " + BookingContext.getSeatListString());
+        payableLabel.setText("Total : INR " + String.format("%.2f", BookingContext.getFinalAmount()));
     }
 
-    /* ================= BOTTOM ================= */
-
-    private JComponent bottomBar(){
-
+    private JComponent bottomBar() {
         JPanel panel = new JPanel(new BorderLayout());
         panel.setOpaque(false);
 
-        JPanel left = new JPanel(new GridLayout(2,1));
+        JPanel left = new JPanel(new GridLayout(2, 1));
         left.setOpaque(false);
 
-        selectedLabel = new JLabel("Seats : []");
+        selectedLabel = new JLabel("Seats : -");
         selectedLabel.setFont(UIConfig.FONT_SMALL);
 
-        payableLabel = new JLabel("Total : ₹ 0");
+        payableLabel = new JLabel("Total : INR 0.00");
         payableLabel.setFont(UIConfig.FONT_SUBTITLE);
 
         left.add(selectedLabel);
@@ -333,50 +345,75 @@ public class SeatSelectionPanel extends JPanel implements Refreshable {
         UIConfig.primaryBtn(proceed);
 
         proceed.addActionListener(e -> {
-
-            if(selectedSeats.isEmpty()){
-                JOptionPane.showMessageDialog(this,"Select seats");
+            if (selectedSeats.isEmpty()) {
+                JOptionPane.showMessageDialog(this, "Select at least one seat");
                 return;
             }
-
             frame.showScreen(MainFrame.SCREEN_PASSENGER);
         });
 
-        panel.add(left,BorderLayout.WEST);
-        panel.add(proceed,BorderLayout.EAST);
+        panel.add(left, BorderLayout.WEST);
+        panel.add(proceed, BorderLayout.EAST);
 
         return panel;
     }
 
-    /* ================= REFRESH ================= */
-
     @Override
-    public void refreshData(){
-
+    public void refreshData() {
         BookingContext.clearSeats();
         selectedSeats.clear();
+        removeAll();
+        add(header(), BorderLayout.NORTH);
+        add(loadingCenter(), BorderLayout.CENTER);
+        add(bottomBar(), BorderLayout.SOUTH);
+        revalidate();
+        repaint();
 
-        seatLockDAO.clearExpiredLocks();
-
-        unavailableSeats =
-                seatDAO.getUnavailableSeats(
+        SwingWorker<SeatLoadResult, Void> worker = new SwingWorker<>() {
+            @Override
+            protected SeatLoadResult doInBackground() {
+                SeatLoadResult result = new SeatLoadResult();
+                seatLockDAO.clearExpiredLocks();
+                result.unavailable = seatDAO.getUnavailableSeats(
                         BookingContext.scheduleId,
                         BookingContext.fromOrder,
                         BookingContext.toOrder
                 );
-
-        BookingContext.totalSeats =
-                seatDAO.getTotalSeatsBySchedule(
-                        BookingContext.scheduleId
+                result.unavailable.addAll(
+                        seatLockDAO.getLockedSeats(
+                                BookingContext.scheduleId,
+                                BookingContext.fromOrder,
+                                BookingContext.toOrder
+                        )
                 );
+                result.totalSeats = seatDAO.getTotalSeatsBySchedule(BookingContext.scheduleId);
+                return result;
+            }
 
-        removeAll();
+            @Override
+            protected void done() {
+                try {
+                    SeatLoadResult result = get();
+                    unavailableSeats = result.unavailable;
+                    BookingContext.totalSeats = result.totalSeats;
+                } catch (Exception e) {
+                    unavailableSeats = new HashSet<>();
+                    BookingContext.totalSeats = 0;
+                }
 
-        add(header(),BorderLayout.NORTH);
-        add(centerPanel(),BorderLayout.CENTER);
-        add(bottomBar(),BorderLayout.SOUTH);
+                removeAll();
+                add(header(), BorderLayout.NORTH);
+                add(centerPanel(), BorderLayout.CENTER);
+                add(bottomBar(), BorderLayout.SOUTH);
+                revalidate();
+                repaint();
+            }
+        };
+        worker.execute();
+    }
 
-        revalidate();
-        repaint();
+    private static class SeatLoadResult {
+        Set<String> unavailable = new HashSet<>();
+        int totalSeats;
     }
 }

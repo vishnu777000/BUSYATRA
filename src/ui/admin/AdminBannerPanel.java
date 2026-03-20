@@ -2,12 +2,14 @@ package ui.admin;
 
 import config.UIConfig;
 import dao.BannerDAO;
+import util.IconUtil;
 import util.Refreshable;
 
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
 import java.io.File;
+import java.net.URL;
 import java.util.List;
 
 public class AdminBannerPanel extends JPanel implements Refreshable {
@@ -15,6 +17,11 @@ public class AdminBannerPanel extends JPanel implements Refreshable {
     private JTable table;
     private DefaultTableModel model;
     private JLabel previewLabel;
+    private JLabel statusLabel;
+    private JButton uploadBtn;
+    private JButton activeBtn;
+    private JButton deleteBtn;
+    private volatile boolean busy = false;
 
     public AdminBannerPanel() {
 
@@ -40,7 +47,7 @@ public class AdminBannerPanel extends JPanel implements Refreshable {
         left.setOpaque(false);
 
         JLabel icon = new JLabel(
-                new ImageIcon(getClass().getResource("/resources/icons/extra/report.png"))
+                IconUtil.load("report.png", 20, 20)
         );
 
         JLabel title = new JLabel("Banner Management");
@@ -132,7 +139,11 @@ public class AdminBannerPanel extends JPanel implements Refreshable {
         String path = model.getValueAt(row,2).toString();
 
         try{
-            ImageIcon icon = new ImageIcon(path);
+            ImageIcon icon = resolvePreviewIcon(path);
+            if (icon == null || icon.getIconWidth() <= 0) {
+                setDefaultPreview();
+                return;
+            }
 
             Image img = icon.getImage().getScaledInstance(
                     420,250,Image.SCALE_SMOOTH);
@@ -145,21 +156,43 @@ public class AdminBannerPanel extends JPanel implements Refreshable {
         }
     }
 
+    private ImageIcon resolvePreviewIcon(String rawPath) {
+        if (rawPath == null || rawPath.isBlank()) return null;
+        String path = rawPath.trim().replace("\\", "/");
+
+        if (path.startsWith("/")) {
+            URL url = getClass().getResource(path);
+            if (url != null) return new ImageIcon(url);
+        }
+
+        if (path.startsWith("resources/")) {
+            URL url = getClass().getResource("/" + path);
+            if (url != null) return new ImageIcon(url);
+        }
+
+        URL fromBanners = getClass().getResource("/resources/banners/" + new File(path).getName());
+        if (fromBanners != null) return new ImageIcon(fromBanners);
+
+        File file = new File(path);
+        if (file.exists()) return new ImageIcon(file.getAbsolutePath());
+        return null;
+    }
+
     /* ================= ACTION BUTTONS ================= */
 
     private JPanel actionPanel(){
 
-        JPanel panel = new JPanel(new FlowLayout(FlowLayout.RIGHT,12,0));
+        JPanel panel = new JPanel(new BorderLayout());
         panel.setOpaque(false);
 
-        JButton uploadBtn = createBtn("Upload",
-                "/resources/icons/actions/upload.png");
+        JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT,12,0));
+        actions.setOpaque(false);
 
-        JButton activeBtn = createBtn("Set Active",
-                "/resources/icons/actions/refresh.png");
+        uploadBtn = createBtn("Upload", "download.png");
 
-        JButton deleteBtn = createBtn("Delete",
-                "/resources/icons/extra/logout.png");
+        activeBtn = createBtn("Set Active", "refresh.png");
+
+        deleteBtn = createBtn("Delete", "logout.png");
 
         UIConfig.primaryBtn(uploadBtn);
         UIConfig.successBtn(activeBtn);
@@ -169,17 +202,22 @@ public class AdminBannerPanel extends JPanel implements Refreshable {
         activeBtn.addActionListener(e -> setActive());
         deleteBtn.addActionListener(e -> deleteBanner());
 
-        panel.add(uploadBtn);
-        panel.add(activeBtn);
-        panel.add(deleteBtn);
+        actions.add(uploadBtn);
+        actions.add(activeBtn);
+        actions.add(deleteBtn);
+
+        statusLabel = new JLabel(" ");
+        statusLabel.setFont(UIConfig.FONT_SMALL);
+        statusLabel.setForeground(UIConfig.TEXT_LIGHT);
+
+        panel.add(statusLabel, BorderLayout.WEST);
+        panel.add(actions, BorderLayout.EAST);
 
         return panel;
     }
 
-    private JButton createBtn(String text, String iconPath){
-
-        JButton b = new JButton(text,
-                new ImageIcon(getClass().getResource(iconPath)));
+    private JButton createBtn(String text, String iconName){
+        JButton b = new JButton(text, IconUtil.load(iconName, 16, 16));
 
         b.setPreferredSize(new Dimension(150,36));
         return b;
@@ -188,22 +226,29 @@ public class AdminBannerPanel extends JPanel implements Refreshable {
     /* ================= LOAD DATA ================= */
 
     private void loadBanners(){
-
-        SwingUtilities.invokeLater(() -> {
-
-            model.setRowCount(0);
-
-            try{
-                List<String[]> list = new BannerDAO().getAllBanners();
-
-                for(String[] row : list){
-                    model.addRow(row);
-                }
-
-            }catch(Exception e){
-                e.printStackTrace();
+        if (busy) return;
+        setBusy(true, "Loading banners...");
+        SwingWorker<List<String[]>, Void> worker = new SwingWorker<>() {
+            @Override
+            protected List<String[]> doInBackground() {
+                return new BannerDAO().getAllBanners();
             }
-        });
+
+            @Override
+            protected void done() {
+                model.setRowCount(0);
+                try{
+                    List<String[]> list = get();
+                    for(String[] row : list){
+                        model.addRow(row);
+                    }
+                    setBusy(false, "Loaded " + model.getRowCount() + " banners");
+                }catch(Exception e){
+                    setBusy(false, "Failed to load banners");
+                }
+            }
+        };
+        worker.execute();
     }
 
     /* ================= ACTIONS ================= */
@@ -228,12 +273,27 @@ public class AdminBannerPanel extends JPanel implements Refreshable {
             return;
         }
 
-        boolean ok = new BannerDAO().addBanner(title, path);
+        setBusy(true, "Uploading banner...");
+        SwingWorker<Boolean, Void> worker = new SwingWorker<>() {
+            @Override
+            protected Boolean doInBackground() {
+                return new BannerDAO().addBanner(title, path);
+            }
 
-        JOptionPane.showMessageDialog(this,
-                ok ? "Uploaded successfully ✅" : "Upload failed ❌");
-
-        if(ok) loadBanners();
+            @Override
+            protected void done() {
+                try {
+                    boolean ok = Boolean.TRUE.equals(get());
+                    JOptionPane.showMessageDialog(AdminBannerPanel.this,
+                            ok ? "Uploaded successfully" : "Upload failed");
+                    if(ok) loadBanners();
+                    else setBusy(false, "Upload failed");
+                } catch (Exception ex) {
+                    setBusy(false, "Upload failed");
+                }
+            }
+        };
+        worker.execute();
     }
 
     private void setActive(){
@@ -246,12 +306,27 @@ public class AdminBannerPanel extends JPanel implements Refreshable {
 
         int id = Integer.parseInt(model.getValueAt(row,0).toString());
 
-        boolean ok = new BannerDAO().setActiveBanner(id);
+        setBusy(true, "Updating active banner...");
+        SwingWorker<Boolean, Void> worker = new SwingWorker<>() {
+            @Override
+            protected Boolean doInBackground() {
+                return new BannerDAO().setActiveBanner(id);
+            }
 
-        JOptionPane.showMessageDialog(this,
-                ok ? "Activated ✅" : "Failed ❌");
-
-        if(ok) loadBanners();
+            @Override
+            protected void done() {
+                try {
+                    boolean ok = Boolean.TRUE.equals(get());
+                    JOptionPane.showMessageDialog(AdminBannerPanel.this,
+                            ok ? "Activated" : "Failed");
+                    if(ok) loadBanners();
+                    else setBusy(false, "Update failed");
+                } catch (Exception ex) {
+                    setBusy(false, "Update failed");
+                }
+            }
+        };
+        worker.execute();
     }
 
     private void deleteBanner(){
@@ -270,16 +345,42 @@ public class AdminBannerPanel extends JPanel implements Refreshable {
 
         int id = Integer.parseInt(model.getValueAt(row,0).toString());
 
-        boolean ok = new BannerDAO().deleteBanner(id);
+        setBusy(true, "Deleting banner...");
+        SwingWorker<Boolean, Void> worker = new SwingWorker<>() {
+            @Override
+            protected Boolean doInBackground() {
+                return new BannerDAO().deleteBanner(id);
+            }
 
-        JOptionPane.showMessageDialog(this,
-                ok ? "Deleted ✅" : "Failed ❌");
-
-        if(ok) loadBanners();
+            @Override
+            protected void done() {
+                try {
+                    boolean ok = Boolean.TRUE.equals(get());
+                    JOptionPane.showMessageDialog(AdminBannerPanel.this,
+                            ok ? "Deleted" : "Failed");
+                    if(ok) loadBanners();
+                    else setBusy(false, "Delete failed");
+                } catch (Exception ex) {
+                    setBusy(false, "Delete failed");
+                }
+            }
+        };
+        worker.execute();
     }
 
     @Override
     public void refreshData(){
         loadBanners();
     }
+
+    private void setBusy(boolean value, String message) {
+        busy = value;
+        if (statusLabel != null) statusLabel.setText(message == null ? " " : message);
+        if (table != null) table.setEnabled(!value);
+        if (uploadBtn != null) uploadBtn.setEnabled(!value);
+        if (activeBtn != null) activeBtn.setEnabled(!value);
+        if (deleteBtn != null) deleteBtn.setEnabled(!value);
+        setCursor(Cursor.getPredefinedCursor(value ? Cursor.WAIT_CURSOR : Cursor.DEFAULT_CURSOR));
+    }
 }
+

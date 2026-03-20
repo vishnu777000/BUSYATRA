@@ -1,41 +1,48 @@
 package config;
 
+import util.EnvLoader;
+
 import java.sql.Connection;
 import java.sql.DriverManager;
-import util.EnvLoader;
+import java.sql.SQLException;
+
 public class DBConfig {
 
-    private static final String HOST = EnvLoader.get("DB_HOST");
-    private static final String PORT = EnvLoader.get("DB_PORT");
-    private static final String DB   = EnvLoader.get("DB_DB");
+    private static final String HOST = require("DB_HOST");
+    private static final String PORT = require("DB_PORT");
+    private static final String DB = require("DB_DB");
+    private static final String USER = require("DB_USER");
+    private static final String PASS = require("DB_PASS");
 
-    private static final String USER = EnvLoader.get("DB_USER");
-    private static final String PASS = EnvLoader.get("DB_PASS");
-
-  private static final String URL =
-    "jdbc:mysql://" + HOST + ":" + PORT + "/" + DB
-    + "?sslMode=REQUIRED"
-    + "&allowPublicKeyRetrieval=true"
-    + "&useSSL=true"
-    + "&serverTimezone=UTC";
-
+    private static final String URL =
+            "jdbc:mysql://" + HOST + ":" + PORT + "/" + DB +
+            "?sslMode=REQUIRED" +
+            "&allowPublicKeyRetrieval=true" +
+            "&useSSL=true" +
+            "&serverTimezone=UTC";
 
     static {
         try {
             Class.forName("com.mysql.cj.jdbc.Driver");
         } catch (ClassNotFoundException e) {
-            throw new RuntimeException("MySQL JDBC Driver not found!", e);
+            throw new RuntimeException("MySQL JDBC Driver not found", e);
         }
     }
 
-    public static Connection getConnection() {
-        try {
-            return DriverManager.getConnection(URL, USER, PASS);
-        } catch (Exception e) {
-            System.out.println("❌ DB Connection Failed: " + e.getMessage());
-            return null;
-        }
+    public static Connection getConnection() throws SQLException {
+        return DriverManager.getConnection(URL, USER, PASS);
     }
 
-    private DBConfig() {}
+    private static String require(String key) {
+        String value = EnvLoader.get(key);
+
+        if (value == null || value.isBlank()) {
+            throw new IllegalStateException("Missing DB config key: " + key);
+        }
+
+        return value;
+    }
+
+    private DBConfig() {
+    }
 }

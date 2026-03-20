@@ -7,7 +7,7 @@ import java.util.Map;
 
 public class EnvLoader {
 
-    private static final Map<String, String> env = new HashMap<>();
+    private static final Map<String, String> ENV = new HashMap<>();
 
     static {
         try (BufferedReader br = new BufferedReader(new FileReader(".env"))) {
@@ -15,21 +15,48 @@ public class EnvLoader {
             String line;
             while ((line = br.readLine()) != null) {
 
-                if (line.trim().isEmpty() || line.startsWith("#")) continue;
+                line = line.trim();
+
+                if (line.isEmpty() || line.startsWith("#")) {
+                    continue;
+                }
 
                 String[] parts = line.split("=", 2);
 
                 if (parts.length == 2) {
-                    env.put(parts[0].trim(), parts[1].trim());
+                    String key = parts[0].trim();
+                    String value = sanitize(parts[1]);
+                    ENV.put(key, value);
                 }
             }
 
         } catch (Exception e) {
-            System.out.println("⚠ .env file not found or failed to load");
+            System.out.println(".env file not found or failed to load");
         }
     }
 
     public static String get(String key) {
-        return env.get(key);
+        String value = ENV.get(key);
+
+        if (value == null || value.isBlank()) {
+            value = System.getenv(key);
+        }
+
+        return value;
+    }
+
+    private static String sanitize(String rawValue) {
+        String value = rawValue.trim();
+
+        if (value.endsWith(";")) {
+            value = value.substring(0, value.length() - 1).trim();
+        }
+
+        if ((value.startsWith("\"") && value.endsWith("\"")) ||
+            (value.startsWith("'") && value.endsWith("'"))) {
+            value = value.substring(1, value.length() - 1);
+        }
+
+        return value.trim();
     }
 }

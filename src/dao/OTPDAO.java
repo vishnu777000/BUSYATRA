@@ -8,9 +8,39 @@ import java.sql.ResultSet;
 
 public class OTPDAO {
 
+    private volatile boolean otpSchemaChecked = false;
+
+    private void ensureOTPTable() {
+        if (otpSchemaChecked) return;
+
+        String sql =
+                "CREATE TABLE IF NOT EXISTS password_otps (" +
+                "id INT PRIMARY KEY AUTO_INCREMENT," +
+                "email VARCHAR(255) NOT NULL," +
+                "otp_code VARCHAR(12) NOT NULL," +
+                "expires_at DATETIME NOT NULL," +
+                "used TINYINT(1) NOT NULL DEFAULT 0," +
+                "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP," +
+                "INDEX idx_otp_email (email)," +
+                "INDEX idx_otp_expires (expires_at)" +
+                ")";
+
+        try (
+                Connection con = DBConfig.getConnection();
+                PreparedStatement ps = con.prepareStatement(sql)
+        ) {
+            ps.executeUpdate();
+            otpSchemaChecked = true;
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
     /* ================= SAVE OTP ================= */
 
     public boolean saveOTP(String email, String otp) {
+
+        ensureOTPTable();
 
         String deleteOld =
                 "DELETE FROM password_otps WHERE email=?";
@@ -56,6 +86,8 @@ public class OTPDAO {
 
     public boolean verifyOTP(String email, String otp) {
 
+        ensureOTPTable();
+
         String sql =
                 "SELECT id FROM password_otps " +
                 "WHERE email=? AND otp_code=? " +
@@ -89,7 +121,9 @@ public class OTPDAO {
 
     /* ================= MARK USED ================= */
 
-    private void markUsed(String email, String otp) {
+    public void markUsed(String email, String otp) {
+
+        ensureOTPTable();
 
         String sql =
                 "UPDATE password_otps SET used=1 " +
@@ -113,6 +147,8 @@ public class OTPDAO {
     /* ================= CLEAN EXPIRED ================= */
 
     public void deleteExpiredOTPs() {
+
+        ensureOTPTable();
 
         String sql =
                 "DELETE FROM password_otps WHERE expires_at < NOW()";

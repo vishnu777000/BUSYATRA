@@ -3,6 +3,7 @@ package ui.clerk;
 import config.UIConfig;
 import dao.ReportsDAO;
 import ui.common.MainFrame;
+import util.Refreshable;
 
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
@@ -10,16 +11,18 @@ import java.awt.*;
 import java.text.DecimalFormat;
 import java.util.List;
 
-public class BookingClerkDashboard extends JPanel {
+public class BookingClerkDashboard extends JPanel implements Refreshable {
 
     private JTable table;
     private DefaultTableModel model;
     private final MainFrame frame;
+    private JLabel statusLabel;
+    private JButton refreshBtn;
 
     private final DecimalFormat df = new DecimalFormat("#,##0.00");
+    private ClerkKPIPanel kpiPanel;
 
     public BookingClerkDashboard(MainFrame frame) {
-
         this.frame = frame;
 
         setLayout(new BorderLayout(16, 16));
@@ -27,152 +30,160 @@ public class BookingClerkDashboard extends JPanel {
         setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
 
         add(header(), BorderLayout.NORTH);
-        add(tableCard(), BorderLayout.CENTER);
+        add(centerLayout(), BorderLayout.CENTER);
         add(actions(), BorderLayout.SOUTH);
 
-        loadData();
+        refreshData();
     }
 
-    /* ================= HEADER ================= */
-
     private JComponent header() {
+        JPanel wrapper = new JPanel(new BorderLayout(0, 10));
+        wrapper.setOpaque(false);
 
-        JPanel p = new JPanel(new BorderLayout());
-        p.setOpaque(false);
+        JPanel top = new JPanel(new BorderLayout());
+        top.setOpaque(false);
 
-        JLabel title = new JLabel("Booking Counter");
+        JLabel title = new JLabel("Clerk Operations Desk");
         title.setFont(UIConfig.FONT_TITLE);
 
-        JLabel sub = new JLabel(
-                "Create bookings • Assist passengers • Manage tickets"
-        );
-
+        JLabel sub = new JLabel("Handle walk-in bookings, quick ticket issues and day schedule from one place");
         sub.setFont(UIConfig.FONT_SMALL);
         sub.setForeground(UIConfig.TEXT_LIGHT);
 
         JPanel left = new JPanel(new GridLayout(2, 1));
         left.setOpaque(false);
-
         left.add(title);
         left.add(sub);
 
-        p.add(left, BorderLayout.WEST);
+        statusLabel = new JLabel(" ");
+        statusLabel.setForeground(UIConfig.TEXT_LIGHT);
 
-        return p;
+        top.add(left, BorderLayout.WEST);
+        top.add(statusLabel, BorderLayout.EAST);
+
+        kpiPanel = new ClerkKPIPanel();
+        wrapper.add(top, BorderLayout.NORTH);
+        wrapper.add(kpiPanel, BorderLayout.CENTER);
+
+        return wrapper;
     }
 
-    /* ================= TABLE ================= */
+    private JComponent centerLayout() {
+        JPanel content = new JPanel(new GridLayout(1, 2, 16, 16));
+        content.setOpaque(false);
+
+        JPanel left = new JPanel(new BorderLayout(12, 12));
+        left.setOpaque(false);
+        left.add(new ClerkQuickActionsPanel(frame), BorderLayout.NORTH);
+        left.add(new ClerkTodaySchedulePanel(), BorderLayout.CENTER);
+
+        content.add(left);
+        content.add(tableCard());
+        return content;
+    }
 
     private JComponent tableCard() {
-
         model = new DefaultTableModel(
-                new Object[]{
-                        "Ticket ID",
-                        "Passenger",
-                        "Route",
-                        "Amount (₹)",
-                        "Status",
-                        "Booking Time"
-                }, 0
+                new Object[]{"Ticket ID", "Passenger", "Route", "Amount (INR)", "Status", "Booking Time"}, 0
         ) {
+            @Override
             public boolean isCellEditable(int r, int c) {
                 return false;
             }
         };
 
         table = new JTable(model);
-
         UIConfig.styleTable(table);
         table.setRowHeight(32);
 
         JScrollPane sp = new JScrollPane(table);
-        sp.setBorder(null);
+        UIConfig.styleScroll(sp);
 
         JPanel card = new JPanel(new BorderLayout());
         UIConfig.styleCard(card);
 
-        card.add(sp, BorderLayout.CENTER);
+        JLabel title = new JLabel("Recent Booking Queue");
+        title.setFont(UIConfig.FONT_SUBTITLE);
 
+        card.add(title, BorderLayout.NORTH);
+        card.add(sp, BorderLayout.CENTER);
         return card;
     }
 
-    /* ================= ACTIONS ================= */
-
     private JComponent actions() {
-
         JPanel p = new JPanel(new FlowLayout(FlowLayout.RIGHT, 12, 0));
         p.setOpaque(false);
 
         JButton newBooking = new JButton("New Booking");
         UIConfig.primaryBtn(newBooking);
+        newBooking.addActionListener(e -> frame.showScreen(MainFrame.SCREEN_SEARCH));
 
-        newBooking.addActionListener(
-                e -> frame.showScreen(MainFrame.SCREEN_SEARCH)
-        );
-
-        JButton refresh = new JButton("Refresh");
-        UIConfig.secondaryBtn(refresh);
-
-        refresh.addActionListener(e -> loadData());
+        refreshBtn = new JButton("Refresh");
+        UIConfig.secondaryBtn(refreshBtn);
+        refreshBtn.addActionListener(e -> refreshData());
 
         p.add(newBooking);
-        p.add(refresh);
-
+        p.add(refreshBtn);
         return p;
     }
 
-    /* ================= LOAD DATA ================= */
-
-    private void loadData() {
-
-        model.setRowCount(0);
-
-        setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
-
-        try {
-
-            List<String[]> list = new ReportsDAO().getAllBookings();
-
-            if (list.isEmpty()) {
-
-                model.addRow(new Object[]{
-                        "-", "No bookings found", "-", "-", "-", "-"
-                });
-
-            } else {
-
-                for (String[] r : list) {
-
-                    String route = r[2] + " → " + r[3];
-
-                    double amount;
-                    try {
-                        amount = Double.parseDouble(r[4]);
-                    } catch (Exception e) {
-                        amount = 0;
-                    }
-
-                    model.addRow(new Object[]{
-                            r[0], // id
-                            r[1], // name
-                            route,
-                            "₹ " + df.format(amount),
-                            r[5], // status
-                            r[6]  // time
-                    });
-                }
-            }
-
-        } catch (Exception e) {
-
-            JOptionPane.showMessageDialog(
-                    this,
-                    "Failed to load bookings"
-            );
-
-            e.printStackTrace();
+    @Override
+    public void refreshData() {
+        setBusy(true, "Loading clerk queue...");
+        if (kpiPanel != null) {
+            kpiPanel.refreshData();
         }
 
-        setCursor(Cursor.getDefaultCursor());
+        SwingWorker<List<String[]>, Void> worker = new SwingWorker<>() {
+            @Override
+            protected List<String[]> doInBackground() {
+                return new ReportsDAO().getAllBookings();
+            }
+
+            @Override
+            protected void done() {
+                try {
+                    List<String[]> list = get();
+                    model.setRowCount(0);
+
+                    if (list == null || list.isEmpty()) {
+                        model.addRow(new Object[]{"-", "No bookings found", "-", "-", "-", "-"});
+                    } else {
+                        int shown = 0;
+                        for (String[] r : list) {
+                            if (r == null || r.length < 7) continue;
+                            String route = r[2] + " -> " + r[3];
+                            double amount = 0;
+                            try {
+                                amount = Double.parseDouble(r[4]);
+                            } catch (Exception ignore) {
+                                // no-op
+                            }
+
+                            model.addRow(new Object[]{
+                                    r[0], r[1], route, df.format(amount), r[5], r[6]
+                            });
+                            shown++;
+                            if (shown >= 30) break;
+                        }
+                    }
+                    setBusy(false, "Queue updated");
+                } catch (Exception e) {
+                    setBusy(false, "Failed to load clerk queue");
+                    JOptionPane.showMessageDialog(BookingClerkDashboard.this, "Failed to load bookings");
+                }
+            }
+        };
+        worker.execute();
+    }
+
+    private void setBusy(boolean busy, String message) {
+        if (table != null) table.setEnabled(!busy);
+        if (refreshBtn != null) {
+            refreshBtn.setEnabled(!busy);
+            refreshBtn.setText(busy ? "Refreshing..." : "Refresh");
+        }
+        if (statusLabel != null) statusLabel.setText(message == null ? " " : message);
+        setCursor(Cursor.getPredefinedCursor(busy ? Cursor.WAIT_CURSOR : Cursor.DEFAULT_CURSOR));
     }
 }

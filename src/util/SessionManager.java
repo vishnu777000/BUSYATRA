@@ -13,6 +13,11 @@ public class SessionManager {
         prefs.putBoolean("loggedIn", true);
     }
 
+    public static void saveUserMeta(String username, String email) {
+        if (username != null) prefs.put("username", username);
+        if (email != null) prefs.put("userEmail", email);
+    }
+
     public static boolean isLoggedIn() {
         return prefs.getBoolean("loggedIn", false);
     }
@@ -25,9 +30,19 @@ public class SessionManager {
         return prefs.get("role", null);
     }
 
+    public static String getUsername() {
+        return prefs.get("username", null);
+    }
+
+    public static String getUserEmail() {
+        return prefs.get("userEmail", null);
+    }
+
     public static void clear() {
         prefs.remove("userId");
         prefs.remove("role");
+        prefs.remove("username");
+        prefs.remove("userEmail");
         prefs.putBoolean("loggedIn", false);
     }
 }

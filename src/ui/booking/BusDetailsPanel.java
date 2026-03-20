@@ -100,7 +100,11 @@ private JComponent center(){
     card.add(driverPhoneLabel);
     card.add(Box.createVerticalStrut(15));
 
-    card.add(new RouteTimelinePanel(BookingContext.routeId));
+    card.add(new RouteTimelinePanel(
+            BookingContext.routeId,
+            BookingContext.fromStop,
+            BookingContext.toStop
+    ));
 
     wrapper.add(card);
 
@@ -128,6 +132,11 @@ private JComponent actions(){
     JPanel panel = new JPanel(new FlowLayout(FlowLayout.RIGHT,12,10));
     panel.setOpaque(false);
 
+    JButton mapBtn = new JButton("View Route Map");
+    mapBtn.setPreferredSize(new Dimension(170,40));
+    UIConfig.secondaryBtn(mapBtn);
+    mapBtn.addActionListener(e -> openRouteMapDialog());
+
     JButton select = new JButton("Select Seats");
     select.setPreferredSize(new Dimension(180,40));
 
@@ -137,9 +146,20 @@ private JComponent actions(){
             frame.showScreen(MainFrame.SCREEN_SEATS)
     );
 
+    panel.add(mapBtn);
     panel.add(select);
 
     return panel;
+}
+
+private void openRouteMapDialog(){
+
+    JDialog d = new JDialog(frame, "Route Map", true);
+    d.setSize(620, 520);
+    d.setLocationRelativeTo(this);
+    d.setLayout(new BorderLayout());
+    d.add(new RouteMapPanel(BookingContext.routeId), BorderLayout.CENTER);
+    d.setVisible(true);
 }
 
 /* ================= REFRESH ================= */

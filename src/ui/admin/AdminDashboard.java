@@ -2,174 +2,282 @@ package ui.admin;
 
 import config.UIConfig;
 import dao.AdminStatsDAO;
+import ui.common.MainFrame;
+import util.Refreshable;
+import util.Session;
 
 import javax.swing.*;
 import java.awt.*;
 
-public class AdminDashboard extends JPanel {
+public class AdminDashboard extends JPanel implements Refreshable {
 
-private JLabel usersLbl;
-private JLabel ticketsLbl;
-private JLabel revenueLbl;
-private JLabel cancelledLbl;
+    private JLabel usersLbl;
+    private JLabel ticketsLbl;
+    private JLabel revenueLbl;
+    private JLabel cancelledLbl;
+    private JProgressBar cancelRateBar;
+    private JProgressBar revenueHealthBar;
+    private JLabel statusLabel;
+    private JButton refreshBtn;
 
-public AdminDashboard() {
+    public AdminDashboard() {
+        setLayout(new BorderLayout(20, 20));
+        setBackground(UIConfig.BACKGROUND);
+        setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
 
-    setLayout(new BorderLayout(20,20));
-    setBackground(UIConfig.BACKGROUND);
-    setBorder(BorderFactory.createEmptyBorder(20,20,20,20));
+        add(header(), BorderLayout.NORTH);
+        add(content(), BorderLayout.CENTER);
+        refreshData();
+    }
 
-    add(header(), BorderLayout.NORTH);
-    add(content(), BorderLayout.CENTER);
+    private JPanel header() {
+        JPanel panel = new JPanel(new BorderLayout());
+        panel.setOpaque(false);
 
-    loadStats();
-}
+        JLabel title = new JLabel("Admin Command Center");
+        title.setFont(new Font("Segoe UI", Font.BOLD, 24));
 
-/* ================= HEADER ================= */
+        JLabel sub = new JLabel("Real-time control for bookings, users and revenue");
+        sub.setForeground(UIConfig.TEXT_LIGHT);
 
-private JPanel header(){
+        String name = (Session.username != null && !Session.username.isBlank()) ? Session.username : "Admin";
+        String role = (Session.role != null && !Session.role.isBlank()) ? Session.role.toUpperCase() : "ADMIN";
+        JLabel who = new JLabel("Signed in: " + name + " (" + role + ")");
+        who.setFont(UIConfig.FONT_SMALL);
+        who.setForeground(new Color(100, 116, 139));
 
-    JPanel panel = new JPanel(new BorderLayout());
-    panel.setOpaque(false);
+        JPanel left = new JPanel(new GridLayout(3, 1));
+        left.setOpaque(false);
+        left.add(title);
+        left.add(sub);
+        left.add(who);
 
-    JLabel title = new JLabel("Dashboard Overview");
-    title.setFont(new Font("Segoe UI",Font.BOLD,24));
+        refreshBtn = new JButton("Refresh");
+        UIConfig.secondaryBtn(refreshBtn);
+        refreshBtn.addActionListener(e -> refreshData());
 
-    JLabel sub = new JLabel("Monitor system performance & analytics");
-    sub.setForeground(UIConfig.TEXT_LIGHT);
+        panel.add(left, BorderLayout.WEST);
+        panel.add(refreshBtn, BorderLayout.EAST);
+        return panel;
+    }
 
-    JPanel left = new JPanel(new GridLayout(2,1));
-    left.setOpaque(false);
-    left.add(title);
-    left.add(sub);
+    private JPanel content() {
+        JPanel panel = new JPanel(new BorderLayout(20, 20));
+        panel.setOpaque(false);
+        panel.add(statsRow(), BorderLayout.NORTH);
+        panel.add(bottomSection(), BorderLayout.CENTER);
+        return panel;
+    }
 
-    panel.add(left,BorderLayout.WEST);
+    private JPanel statsRow() {
+        JPanel row = new JPanel(new GridLayout(1, 4, 16, 16));
+        row.setOpaque(false);
 
-    return panel;
-}
+        usersLbl = createValue();
+        ticketsLbl = createValue();
+        revenueLbl = createValue();
+        cancelledLbl = createValue();
 
-/* ================= MAIN CONTENT ================= */
+        row.add(gradientCard("Active Users", usersLbl, new Color(37, 99, 235), new Color(59, 130, 246)));
+        row.add(gradientCard("Total Tickets", ticketsLbl, new Color(124, 58, 237), new Color(147, 51, 234)));
+        row.add(gradientCard("Revenue", revenueLbl, new Color(5, 150, 105), new Color(16, 185, 129)));
+        row.add(gradientCard("Cancelled", cancelledLbl, new Color(220, 38, 38), new Color(239, 68, 68)));
+        return row;
+    }
 
-private JPanel content(){
+    private JLabel createValue() {
+        JLabel lbl = new JLabel("0");
+        lbl.setFont(new Font("Segoe UI", Font.BOLD, 26));
+        lbl.setForeground(Color.WHITE);
+        return lbl;
+    }
 
-    JPanel panel = new JPanel(new BorderLayout(20,20));
-    panel.setOpaque(false);
+    private JPanel gradientCard(String title, JLabel value, Color start, Color end) {
+        JPanel card = new GradientPanel(start, end);
+        card.setLayout(new BorderLayout());
+        card.setBorder(BorderFactory.createEmptyBorder(14, 14, 14, 14));
 
-    panel.add(statsRow(), BorderLayout.NORTH);
-    panel.add(bottomSection(), BorderLayout.CENTER);
+        JLabel t = new JLabel(title);
+        t.setForeground(new Color(255, 245, 245));
+        t.setFont(UIConfig.FONT_SMALL);
 
-    return panel;
-}
+        card.add(t, BorderLayout.NORTH);
+        card.add(value, BorderLayout.CENTER);
+        return card;
+    }
 
-/* ================= TOP CARDS ================= */
+    private JPanel bottomSection() {
+        JPanel panel = new JPanel(new GridLayout(1, 2, 20, 20));
+        panel.setOpaque(false);
+        panel.add(healthCard());
+        panel.add(opsActionsCard());
+        return panel;
+    }
 
-private JPanel statsRow(){
+    private JPanel healthCard() {
+        JPanel card = new JPanel(new BorderLayout(10, 14));
+        UIConfig.styleCard(card);
 
-    JPanel row = new JPanel(new GridLayout(1,4,20,20));
-    row.setOpaque(false);
+        JLabel title = new JLabel("System Health");
+        title.setFont(UIConfig.FONT_SUBTITLE);
 
-    usersLbl = createValue();
-    ticketsLbl = createValue();
-    revenueLbl = createValue();
-    cancelledLbl = createValue();
+        JPanel metrics = new JPanel(new GridLayout(2, 1, 0, 12));
+        metrics.setOpaque(false);
 
-    row.add(modernCard("Users", usersLbl, new Color(33,150,243)));
-    row.add(modernCard("Tickets", ticketsLbl, new Color(156,39,176)));
-    row.add(modernCard("Revenue", revenueLbl, new Color(76,175,80)));
-    row.add(modernCard("Cancelled", cancelledLbl, new Color(244,67,54)));
+        cancelRateBar = new JProgressBar(0, 100);
+        cancelRateBar.setStringPainted(true);
+        cancelRateBar.setForeground(UIConfig.DANGER);
 
-    return row;
-}
+        revenueHealthBar = new JProgressBar(0, 100);
+        revenueHealthBar.setStringPainted(true);
+        revenueHealthBar.setForeground(UIConfig.SUCCESS);
 
-private JLabel createValue(){
+        metrics.add(progressRow("Cancellation rate", cancelRateBar));
+        metrics.add(progressRow("Revenue target", revenueHealthBar));
 
-    JLabel lbl = new JLabel("0");
-    lbl.setFont(new Font("Segoe UI",Font.BOLD,28));
-    lbl.setForeground(Color.WHITE);
-    return lbl;
-}
+        statusLabel = new JLabel(" ");
+        statusLabel.setForeground(UIConfig.TEXT_LIGHT);
 
-private JPanel modernCard(String title, JLabel value, Color color){
+        card.add(title, BorderLayout.NORTH);
+        card.add(metrics, BorderLayout.CENTER);
+        card.add(statusLabel, BorderLayout.SOUTH);
+        return card;
+    }
 
-    JPanel card = new JPanel(new BorderLayout());
-    card.setPreferredSize(new Dimension(200,100));
+    private JPanel progressRow(String label, JProgressBar bar) {
+        JPanel row = new JPanel(new BorderLayout(10, 6));
+        row.setOpaque(false);
+        JLabel l = new JLabel(label);
+        l.setFont(UIConfig.FONT_NORMAL);
+        row.add(l, BorderLayout.NORTH);
+        row.add(bar, BorderLayout.CENTER);
+        return row;
+    }
 
-    card.setBackground(color);
-    card.setBorder(BorderFactory.createEmptyBorder(15,15,15,15));
+    private JPanel opsActionsCard() {
+        JPanel card = new JPanel(new BorderLayout(10, 10));
+        UIConfig.styleCard(card);
 
-    JLabel t = new JLabel(title);
-    t.setForeground(Color.WHITE);
+        JLabel title = new JLabel("Operations Workbench");
+        title.setFont(UIConfig.FONT_SUBTITLE);
 
-    card.add(t,BorderLayout.NORTH);
-    card.add(value,BorderLayout.CENTER);
+        JPanel actions = new JPanel(new GridLayout(4, 2, 10, 10));
+        actions.setOpaque(false);
 
-    return card;
-}
+        actions.add(actionBtn("Manage Banners", "ADMIN_BANNERS"));
+        actions.add(actionBtn("Route Map & Lines", "MANAGE_ROUTES"));
+        actions.add(actionBtn("Schedules", "MANAGE_SCHEDULES"));
+        actions.add(actionBtn("Accounts Dashboard", "ACCOUNTS"));
+        actions.add(actionBtn("Reports", "REPORTS"));
+        actions.add(actionBtn("Complaints", "ADMIN_COMPLAINTS"));
+        actions.add(actionBtn("Manager Dashboard", MainFrame.SCREEN_MANAGER));
+        actions.add(actionBtn("Clerk Dashboard", MainFrame.SCREEN_CLERK));
 
-/* ================= BOTTOM ================= */
+        JTextArea notes = new JTextArea();
+        notes.setEditable(false);
+        notes.setLineWrap(true);
+        notes.setWrapStyleWord(true);
+        notes.setFont(UIConfig.FONT_NORMAL);
+        notes.setText(
+                "Daily admin flow:\n" +
+                "- Publish banner updates and service advisories.\n" +
+                "- Review route map, stops and schedule consistency.\n" +
+                "- Track cancellation spikes before peak departures."
+        );
 
-private JPanel bottomSection(){
+        card.add(title, BorderLayout.NORTH);
+        card.add(actions, BorderLayout.CENTER);
+        card.add(notes, BorderLayout.SOUTH);
+        return card;
+    }
 
-    JPanel panel = new JPanel(new GridLayout(1,2,20,20));
-    panel.setOpaque(false);
+    private JButton actionBtn(String text, String screenKey) {
+        JButton btn = new JButton(text);
+        UIConfig.secondaryBtn(btn);
+        btn.addActionListener(e -> openScreen(screenKey));
+        return btn;
+    }
 
-    panel.add(activityCard());
-    panel.add(infoCard());
+    private void openScreen(String screenKey) {
+        Window w = SwingUtilities.getWindowAncestor(this);
+        if (w instanceof MainFrame) {
+            ((MainFrame) w).showScreen(screenKey);
+        }
+    }
 
-    return panel;
-}
+    @Override
+    public void refreshData() {
+        setBusy(true, "Refreshing admin metrics...");
+        SwingWorker<StatsData, Void> worker = new SwingWorker<>() {
+            @Override
+            protected StatsData doInBackground() {
+                AdminStatsDAO dao = new AdminStatsDAO();
+                StatsData d = new StatsData();
+                d.users = dao.getTotalUsers();
+                d.tickets = dao.getTotalTickets();
+                d.cancelled = dao.getCancelledTickets();
+                d.revenue = dao.getTotalRevenue();
+                return d;
+            }
 
-private JPanel activityCard(){
+            @Override
+            protected void done() {
+                try {
+                    StatsData d = get();
+                    usersLbl.setText(String.valueOf(d.users));
+                    ticketsLbl.setText(String.valueOf(d.tickets));
+                    cancelledLbl.setText(String.valueOf(d.cancelled));
+                    revenueLbl.setText("INR " + String.format("%.0f", d.revenue));
 
-    JPanel card = new JPanel(new BorderLayout());
-    UIConfig.styleCard(card);
+                    int cancelRate = d.tickets <= 0 ? 0 : (int) ((d.cancelled * 100.0) / d.tickets);
+                    cancelRateBar.setValue(cancelRate);
+                    cancelRateBar.setString(cancelRate + "%");
 
-    JLabel title = new JLabel("Recent Activity");
-    title.setFont(UIConfig.FONT_SUBTITLE);
+                    int revenueProgress = (int) Math.min(100, (d.revenue / 100000.0) * 100);
+                    revenueHealthBar.setValue(revenueProgress);
+                    revenueHealthBar.setString(revenueProgress + "% of INR 100000");
 
-    JTextArea area = new JTextArea(
-            "• Ticket booked\n• User registered\n• Payment received\n• Complaint resolved"
-    );
+                    setBusy(false, "Dashboard updated");
+                } catch (Exception ex) {
+                    setBusy(false, "Failed to load admin metrics");
+                }
+            }
+        };
+        worker.execute();
+    }
 
-    area.setEditable(false);
-    area.setBorder(BorderFactory.createEmptyBorder(10,10,10,10));
+    private void setBusy(boolean busy, String message) {
+        refreshBtn.setEnabled(!busy);
+        refreshBtn.setText(busy ? "Refreshing..." : "Refresh");
+        statusLabel.setText(message == null ? " " : message);
+        setCursor(Cursor.getPredefinedCursor(busy ? Cursor.WAIT_CURSOR : Cursor.DEFAULT_CURSOR));
+    }
 
-    card.add(title,BorderLayout.NORTH);
-    card.add(new JScrollPane(area),BorderLayout.CENTER);
+    private static class StatsData {
+        int users;
+        int tickets;
+        int cancelled;
+        double revenue;
+    }
 
-    return card;
-}
+    private static class GradientPanel extends JPanel {
+        private final Color start;
+        private final Color end;
 
-private JPanel infoCard(){
+        private GradientPanel(Color start, Color end) {
+            this.start = start;
+            this.end = end;
+            setOpaque(false);
+        }
 
-    JPanel card = new JPanel(new BorderLayout());
-    UIConfig.styleCard(card);
-
-    JLabel title = new JLabel("System Info");
-    title.setFont(UIConfig.FONT_SUBTITLE);
-
-    JLabel info = new JLabel(
-            "<html>Total System Health: <b>Good</b><br/>Server Status: Online</html>"
-    );
-
-    info.setBorder(BorderFactory.createEmptyBorder(10,10,10,10));
-
-    card.add(title,BorderLayout.NORTH);
-    card.add(info,BorderLayout.CENTER);
-
-    return card;
-}
-
-/* ================= LOAD ================= */
-
-private void loadStats(){
-
-    AdminStatsDAO dao = new AdminStatsDAO();
-
-    usersLbl.setText(String.valueOf(dao.getTotalUsers()));
-    ticketsLbl.setText(String.valueOf(dao.getTotalTickets()));
-    cancelledLbl.setText(String.valueOf(dao.getCancelledTickets()));
-    revenueLbl.setText("₹" + String.format("%.0f", dao.getTotalRevenue()));
-}
-
+        @Override
+        protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+            g2.setPaint(new GradientPaint(0, 0, start, getWidth(), getHeight(), end));
+            g2.fillRoundRect(0, 0, getWidth(), getHeight(), 16, 16);
+            g2.dispose();
+            super.paintComponent(g);
+        }
+    }
 }

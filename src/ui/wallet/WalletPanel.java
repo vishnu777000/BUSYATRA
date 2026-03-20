@@ -2,22 +2,24 @@ package ui.wallet;
 
 import config.UIConfig;
 import dao.WalletDAO;
-import util.Session;
 import util.Refreshable;
+import util.Session;
 
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
-import javax.swing.table.JTableHeader;
 import java.awt.*;
-import java.sql.ResultSet;
+import java.util.List;
 
 public class WalletPanel extends JPanel implements Refreshable {
 
     private JLabel balanceLabel;
     private JTable table;
     private DefaultTableModel model;
+    private JButton addMoneyBtn;
+    private JLabel loadingLabel;
+    private volatile boolean busy = false;
+    private volatile long refreshToken = 0L;
 
-    // 🔥 SINGLE DAO INSTANCE
     private final WalletDAO walletDAO = new WalletDAO();
 
     public WalletPanel() {
@@ -28,13 +30,8 @@ public class WalletPanel extends JPanel implements Refreshable {
 
         add(topCard(), BorderLayout.NORTH);
         add(tableSection(), BorderLayout.CENTER);
-
-        refreshData();
     }
 
-    /* =================================================
-       TOP CARD : BALANCE + ADD MONEY
-       ================================================= */
     private JPanel topCard() {
 
         JPanel card = new JPanel(new BorderLayout(12, 12));
@@ -44,10 +41,10 @@ public class WalletPanel extends JPanel implements Refreshable {
         title.setFont(UIConfig.FONT_SUBTITLE);
         title.setForeground(UIConfig.TEXT);
 
-        balanceLabel = new JLabel("₹ 0.00");
+        balanceLabel = new JLabel("INR 0.00");
         balanceLabel.setFont(new Font("Segoe UI", Font.BOLD, 28));
 
-        JButton addMoneyBtn = new JButton("Add Money");
+        addMoneyBtn = new JButton("Add Money");
         UIConfig.primaryBtn(addMoneyBtn);
         addMoneyBtn.addActionListener(e -> addMoney());
 
@@ -62,13 +59,10 @@ public class WalletPanel extends JPanel implements Refreshable {
         return card;
     }
 
-    /* =================================================
-       TRANSACTION TABLE
-       ================================================= */
-    private JScrollPane tableSection() {
+    private JComponent tableSection() {
 
         model = new DefaultTableModel(
-                new String[]{"Date", "Type", "Amount (₹)", "Status"}, 0
+                new String[]{"Date", "Type", "Amount (INR)", "Status"}, 0
         ) {
             @Override
             public boolean isCellEditable(int r, int c) {
@@ -77,26 +71,35 @@ public class WalletPanel extends JPanel implements Refreshable {
         };
 
         table = new JTable(model);
-        table.setRowHeight(28);
-        table.setFont(UIConfig.FONT_NORMAL);
-        table.setSelectionBackground(new Color(232, 245, 233));
-
-        JTableHeader header = table.getTableHeader();
-        header.setFont(UIConfig.FONT_SMALL);
-        header.setBackground(UIConfig.PRIMARY);
-        header.setForeground(Color.WHITE);
+        UIConfig.styleTable(table);
 
         JScrollPane sp = new JScrollPane(table);
-        sp.setBorder(BorderFactory.createLineBorder(UIConfig.BORDER));
-        sp.getViewport().setBackground(UIConfig.BACKGROUND);
+        UIConfig.styleScroll(sp);
 
-        return sp;
+        loadingLabel = new JLabel(" ", SwingConstants.RIGHT);
+        loadingLabel.setFont(UIConfig.FONT_SMALL);
+        loadingLabel.setForeground(UIConfig.TEXT_LIGHT);
+
+        JPanel wrap = new JPanel(new BorderLayout(0, 8));
+        wrap.setOpaque(false);
+        wrap.add(sp, BorderLayout.CENTER);
+        wrap.add(loadingLabel, BorderLayout.SOUTH);
+        return wrap;
     }
 
-    /* =================================================
-       ADD MONEY
-       ================================================= */
+    private void setBusy(boolean value, String text) {
+        busy = value;
+        if (addMoneyBtn != null) {
+            addMoneyBtn.setEnabled(!value);
+        }
+        if (loadingLabel != null) {
+            loadingLabel.setText(text == null ? " " : text);
+        }
+        setCursor(Cursor.getPredefinedCursor(value ? Cursor.WAIT_CURSOR : Cursor.DEFAULT_CURSOR));
+    }
+
     private void addMoney() {
+        if (busy) return;
 
         String input = JOptionPane.showInputDialog(
                 this,
@@ -107,83 +110,87 @@ public class WalletPanel extends JPanel implements Refreshable {
 
         if (input == null) return;
 
+        final double amount;
         try {
-            double amount = Double.parseDouble(input);
-
+            amount = Double.parseDouble(input);
             if (amount <= 0) {
                 JOptionPane.showMessageDialog(this, "Enter valid amount");
                 return;
             }
-
-            if (!walletDAO.addMoney(Session.userId, amount)) {
-                JOptionPane.showMessageDialog(this, "Failed to add money");
-                return;
-            }
-
-            refreshData();
-            JOptionPane.showMessageDialog(this, "Money added successfully");
-
         } catch (NumberFormatException e) {
             JOptionPane.showMessageDialog(this, "Invalid amount");
+            return;
         }
-    }
 
-    /* =================================================
-       LOAD BALANCE
-       ================================================= */
-    private void loadBalance() {
+        setBusy(true, "Adding money...");
 
-        double bal = walletDAO.getBalance(Session.userId);
-        balanceLabel.setText("₹ " + String.format("%.2f", bal));
-
-        if (bal <= 0) {
-            balanceLabel.setForeground(UIConfig.DANGER);
-        } else {
-            balanceLabel.setForeground(UIConfig.SUCCESS);
-        }
-    }
-
-    /* =================================================
-       LOAD TRANSACTIONS
-       ================================================= */
-    private void loadTransactions() {
-
-        model.setRowCount(0);
-
-        try {
-            ResultSet rs = walletDAO.getTransactions(Session.userId);
-            boolean found = false;
-
-            while (rs != null && rs.next()) {
-                found = true;
-
-                model.addRow(new Object[]{
-                        rs.getString("created_at"),
-                        rs.getString("type"),
-                        rs.getDouble("amount"),
-                        rs.getString("status")
-                });
+        SwingWorker<Boolean, Void> worker = new SwingWorker<>() {
+            @Override
+            protected Boolean doInBackground() {
+                return walletDAO.addMoney(Session.userId, amount);
             }
 
-            if (!found) {
-                model.addRow(
-                        new Object[]{"-", "No transactions", "-", "-"}
-                );
+            @Override
+            protected void done() {
+                setBusy(false, " ");
+                try {
+                    boolean ok = get();
+                    if (!ok) {
+                        JOptionPane.showMessageDialog(WalletPanel.this, "Failed to add money");
+                        return;
+                    }
+                    refreshData();
+                    JOptionPane.showMessageDialog(WalletPanel.this, "Money added successfully");
+                } catch (Exception e) {
+                    JOptionPane.showMessageDialog(WalletPanel.this, "Failed to add money\nReason: " + e.getMessage());
+                }
             }
+        };
 
-        } catch (Exception e) {
-            model.addRow(
-                    new Object[]{"-", "Error loading data", "-", "-"}
-            );
-        }
+        worker.execute();
     }
 
-    /* =================================================
-       REFRESH
-       ================================================= */
     @Override
     public void refreshData() {
-        loadBalance();
-        loadTransactions();
+        final long token = System.nanoTime();
+        refreshToken = token;
+        model.setRowCount(0);
+        setBusy(true, "Loading wallet...");
+
+        SwingWorker<Void, Void> worker = new SwingWorker<>() {
+            double bal;
+            List<String[]> transactions;
+
+            @Override
+            protected Void doInBackground() {
+                bal = walletDAO.getBalance(Session.userId);
+                transactions = walletDAO.getTransactions(Session.userId);
+                return null;
+            }
+
+            @Override
+            protected void done() {
+                if (token != refreshToken) return;
+                setBusy(false, " ");
+
+                balanceLabel.setText("INR " + String.format("%.2f", bal));
+                balanceLabel.setForeground(bal <= 0 ? UIConfig.DANGER : UIConfig.SUCCESS);
+
+                boolean found = false;
+                if (transactions != null) {
+                    for (String[] tx : transactions) {
+                        if (tx == null || tx.length < 4) continue;
+                        found = true;
+                        model.addRow(new Object[]{tx[0], tx[1], tx[2], tx[3]});
+                    }
+                }
+
+                if (!found) {
+                    model.addRow(new Object[]{"-", "No transactions", "-", "-"});
+                }
+            }
+        };
+
+        worker.execute();
     }
 }

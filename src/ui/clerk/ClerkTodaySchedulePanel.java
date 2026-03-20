@@ -4,7 +4,6 @@ import config.UIConfig;
 
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
-import javax.swing.table.JTableHeader;
 import java.awt.*;
 
 public class ClerkTodaySchedulePanel extends JPanel {
@@ -33,29 +32,11 @@ public class ClerkTodaySchedulePanel extends JPanel {
 
         JTable table=
                 new JTable(model);
-
-        table.setRowHeight(30);
-        table.setFont(UIConfig.FONT_NORMAL);
-        table.setSelectionBackground(
-                new Color(232,245,233));
-
-        // ===== HEADER STYLE =====
-        JTableHeader header=
-                table.getTableHeader();
-        header.setFont(
-                new Font("Segoe UI",
-                        Font.BOLD,14));
-        header.setBackground(
-                UIConfig.PRIMARY);
-        header.setForeground(
-                Color.WHITE);
+        UIConfig.styleTable(table);
 
         JScrollPane scroll=
                 new JScrollPane(table);
-        scroll.setBorder(
-                BorderFactory
-                        .createLineBorder(
-                                new Color(210,210,210)));
+        UIConfig.styleScroll(scroll);
 
         add(title,
                 BorderLayout.NORTH);

@@ -9,12 +9,9 @@ import java.sql.SQLException;
  * DBConnectionUtil
  * ------------------------------------
  * Central JDBC connection helper.
- * Reuses a single connection safely
- * and provides proper close methods.
+ * Returns a fresh connection each call.
  */
 public class DBConnectionUtil {
-
-    private static Connection con;
 
     private DBConnectionUtil() {
         // utility class
@@ -25,14 +22,10 @@ public class DBConnectionUtil {
     public static Connection getConnection() {
 
         try {
-            if (con == null || con.isClosed()) {
-                con = DBConfig.getConnection();
-            }
+            return DBConfig.getConnection();
         } catch (SQLException e) {
-            e.printStackTrace();
+            throw new RuntimeException("Failed to get database connection", e);
         }
-
-        return con;
     }
 
     /* ================= CLOSE SINGLE ================= */
@@ -53,14 +46,6 @@ public class DBConnectionUtil {
     /* ================= CLOSE GLOBAL ================= */
 
     public static void closeAll() {
-
-        try {
-            if (con != null && !con.isClosed()) {
-                con.close();
-                con = null;
-            }
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
+        // No-op. Connections are not globally cached anymore.
     }
 }

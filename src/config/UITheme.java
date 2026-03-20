@@ -36,6 +36,9 @@ public class UITheme {
     public static final Font FONT_SUBTITLE =
             new Font("Segoe UI", Font.BOLD, 15);
 
+    public static final Font FONT_BOLD =
+            new Font("Segoe UI", Font.BOLD, 13);
+
     public static final Font FONT_PLAIN =
             new Font("Segoe UI", Font.PLAIN, 13);
 

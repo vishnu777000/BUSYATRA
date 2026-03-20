@@ -93,7 +93,11 @@ private JComponent center(){
     card.add(amountLabel);
     card.add(Box.createVerticalStrut(15));
 
-    card.add(new RouteTimelinePanel(BookingContext.routeId));
+    card.add(new RouteTimelinePanel(
+            BookingContext.routeId,
+            BookingContext.fromStop,
+            BookingContext.toStop
+    ));
 
     wrapper.add(card);
 
@@ -120,8 +124,6 @@ private JComponent actions(){
     UIConfig.primaryBtn(viewBtn);
 
     viewBtn.addActionListener(e -> {
-
-        BookingContext.clearAfterPreview();
         frame.showScreen(MainFrame.SCREEN_TICKET_PREVIEW);
     });
 

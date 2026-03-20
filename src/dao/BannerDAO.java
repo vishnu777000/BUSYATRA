@@ -6,22 +6,124 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class BannerDAO {
+
+    private final Map<String, Boolean> tableCache = new HashMap<>();
+    private final Map<String, Boolean> columnCache = new HashMap<>();
+
+    private boolean tableExists(String tableName) {
+        if (tableCache.containsKey(tableName)) return tableCache.get(tableName);
+
+        String sql =
+                "SELECT 1 FROM information_schema.tables " +
+                "WHERE table_schema = DATABASE() AND table_name = ? LIMIT 1";
+        try (Connection con = DBConfig.getConnection();
+             PreparedStatement ps = con.prepareStatement(sql)) {
+            ps.setString(1, tableName);
+            try (ResultSet rs = ps.executeQuery()) {
+                boolean exists = rs.next();
+                tableCache.put(tableName, exists);
+                return exists;
+            }
+        } catch (Exception e) {
+            tableCache.put(tableName, false);
+            return false;
+        }
+    }
+
+    private boolean columnExists(String tableName, String columnName) {
+        String key = tableName + "." + columnName;
+        if (columnCache.containsKey(key)) return columnCache.get(key);
+
+        String sql =
+                "SELECT 1 FROM information_schema.columns " +
+                "WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ? LIMIT 1";
+        try (Connection con = DBConfig.getConnection();
+             PreparedStatement ps = con.prepareStatement(sql)) {
+            ps.setString(1, tableName);
+            ps.setString(2, columnName);
+            try (ResultSet rs = ps.executeQuery()) {
+                boolean exists = rs.next();
+                columnCache.put(key, exists);
+                return exists;
+            }
+        } catch (Exception e) {
+            columnCache.put(key, false);
+            return false;
+        }
+    }
+
+    private String firstExistingColumn(String table, String... candidates) {
+        for (String candidate : candidates) {
+            if (columnExists(table, candidate)) return candidate;
+        }
+        return null;
+    }
+
+    private String titleCol() {
+        return firstExistingColumn("banners", "title", "banner_title", "name", "heading");
+    }
+
+    private String imageCol() {
+        return firstExistingColumn("banners", "image_path", "image", "banner_image", "path", "file_path");
+    }
+
+    private String activeCol() {
+        return firstExistingColumn("banners", "active", "is_active", "enabled", "status");
+    }
+
+    private String activeTrueExpr(String col) {
+        if (col == null) return "";
+        if ("status".equalsIgnoreCase(col)) return col + "='ACTIVE'";
+        return col + "=1";
+    }
 
     /* ================= ADD BANNER ================= */
 
     public boolean addBanner(String title, String path) {
 
-        String sql =
-                "INSERT INTO banners (title, image_path, active) VALUES (?, ?, 0)";
+        if (!tableExists("banners")) return false;
+
+        String tCol = titleCol();
+        String iCol = imageCol();
+        String aCol = activeCol();
+        if (iCol == null) return false;
+
+        List<String> cols = new ArrayList<>();
+        List<Object> vals = new ArrayList<>();
+        if (tCol != null) {
+            cols.add(tCol);
+            vals.add(title);
+        }
+        cols.add(iCol);
+        vals.add(path);
+        if (aCol != null) {
+            cols.add(aCol);
+            vals.add("status".equalsIgnoreCase(aCol) ? "INACTIVE" : 0);
+        }
+
+        StringBuilder sql = new StringBuilder("INSERT INTO banners (");
+        for (int i = 0; i < cols.size(); i++) {
+            if (i > 0) sql.append(",");
+            sql.append(cols.get(i));
+        }
+        sql.append(") VALUES (");
+        for (int i = 0; i < cols.size(); i++) {
+            if (i > 0) sql.append(",");
+            sql.append("?");
+        }
+        sql.append(")");
 
         try (Connection con = DBConfig.getConnection();
-             PreparedStatement ps = con.prepareStatement(sql)) {
+             PreparedStatement ps = con.prepareStatement(sql.toString())) {
 
-            ps.setString(1, title);
-            ps.setString(2, path);
+            for (int i = 0; i < vals.size(); i++) {
+                ps.setObject(i + 1, vals.get(i));
+            }
 
             return ps.executeUpdate() > 0;
 
@@ -39,15 +141,15 @@ public class BannerDAO {
         if (includeActive) {
             return new String[]{
                     rs.getString("id"),
-                    rs.getString("title"),
-                    rs.getString("image_path"),
-                    rs.getInt("active") == 1 ? "YES" : "NO"
+                    rs.getString("title_value"),
+                    rs.getString("image_value"),
+                    rs.getString("active_value")
             };
         } else {
             return new String[]{
                     rs.getString("id"),
-                    rs.getString("title"),
-                    rs.getString("image_path")
+                    rs.getString("title_value"),
+                    rs.getString("image_value")
             };
         }
     }
@@ -57,9 +159,25 @@ public class BannerDAO {
     public List<String[]> getAllBanners() {
 
         List<String[]> list = new ArrayList<>();
+        if (!tableExists("banners")) return list;
+
+        String tCol = titleCol();
+        String iCol = imageCol();
+        String aCol = activeCol();
+        if (iCol == null) return list;
+
+        String activeExpr = aCol == null
+                ? "'NO'"
+                : ("status".equalsIgnoreCase(aCol)
+                ? "CASE WHEN " + aCol + "='ACTIVE' THEN 'YES' ELSE 'NO' END"
+                : "CASE WHEN " + aCol + "=1 THEN 'YES' ELSE 'NO' END");
 
         String sql =
-                "SELECT id, title, image_path, active FROM banners ORDER BY id DESC";
+                "SELECT id, " +
+                (tCol != null ? tCol : "''") + " AS title_value, " +
+                iCol + " AS image_value, " +
+                activeExpr + " AS active_value " +
+                "FROM banners ORDER BY id DESC LIMIT 300";
 
         try (Connection con = DBConfig.getConnection();
              PreparedStatement ps = con.prepareStatement(sql);
@@ -81,9 +199,19 @@ public class BannerDAO {
     public List<String[]> getActiveBanners() {
 
         List<String[]> list = new ArrayList<>();
+        if (!tableExists("banners")) return list;
+
+        String tCol = titleCol();
+        String iCol = imageCol();
+        String aCol = activeCol();
+        if (iCol == null) return list;
 
         String sql =
-                "SELECT id, title, image_path FROM banners WHERE active=1";
+                "SELECT id, " +
+                (tCol != null ? tCol : "''") + " AS title_value, " +
+                iCol + " AS image_value " +
+                "FROM banners " +
+                (aCol != null ? "WHERE " + activeTrueExpr(aCol) : "");
 
         try (Connection con = DBConfig.getConnection();
              PreparedStatement ps = con.prepareStatement(sql);
@@ -104,8 +232,20 @@ public class BannerDAO {
 
     public boolean setActiveBanner(int id) {
 
-        String disableSql = "UPDATE banners SET active=0";
-        String enableSql  = "UPDATE banners SET active=1 WHERE id=?";
+        if (!tableExists("banners")) return false;
+
+        String aCol = activeCol();
+        if (aCol == null) return false;
+
+        String disableSql;
+        String enableSql;
+        if ("status".equalsIgnoreCase(aCol)) {
+            disableSql = "UPDATE banners SET " + aCol + "='INACTIVE'";
+            enableSql = "UPDATE banners SET " + aCol + "='ACTIVE' WHERE id=?";
+        } else {
+            disableSql = "UPDATE banners SET " + aCol + "=0";
+            enableSql = "UPDATE banners SET " + aCol + "=1 WHERE id=?";
+        }
 
         try (Connection con = DBConfig.getConnection()) {
 
@@ -162,16 +302,26 @@ public class BannerDAO {
     public List<String> getHomepageBannerImages() {
 
         List<String> list = new ArrayList<>();
+        if (!tableExists("banners")) return list;
+
+        String iCol = imageCol();
+        String aCol = activeCol();
+        if (iCol == null) return list;
 
         String sql =
-                "SELECT image_path FROM banners WHERE active=1 ORDER BY id DESC";
+                "SELECT " + iCol + " AS image_value FROM banners " +
+                (aCol != null ? "WHERE " + activeTrueExpr(aCol) + " " : "") +
+                "ORDER BY id DESC LIMIT 20";
 
         try (Connection con = DBConfig.getConnection();
              PreparedStatement ps = con.prepareStatement(sql);
              ResultSet rs = ps.executeQuery()) {
 
             while (rs.next()) {
-                list.add(rs.getString("image_path"));
+                String image = rs.getString("image_value");
+                if (image != null && !image.isBlank()) {
+                    list.add(image);
+                }
             }
 
         } catch (Exception e) {

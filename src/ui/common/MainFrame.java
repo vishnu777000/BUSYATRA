@@ -56,12 +56,14 @@ public class MainFrame extends JFrame {
     private final JPanel contentPanel = new JPanel(cardLayout);
 
     private final HashMap<String, JPanel> screenCache = new HashMap<>();
+    private final HashMap<String, Long> lastRefreshAtNanos = new HashMap<>();
     private final Stack<String> navigationHistory = new Stack<>();
 
     private String currentScreen;
 
-    private final String username;
     private final String role;
+    private static final long REFRESH_THROTTLE_NS = 500_000_000L; // 500ms
+    private static final boolean PERF_LOG = true;
 
     private HeaderPanel headerPanel;
 
@@ -69,12 +71,10 @@ public class MainFrame extends JFrame {
 
     public MainFrame(String username, String role) {
 
-        this.username = username;
-        this.role = role;
+        this.role = normalizeRole(role);
 
         initFrame();
         initLayout();
-        preloadScreens();
         initDefaultScreen();
 
         setVisible(true);
@@ -97,18 +97,16 @@ public class MainFrame extends JFrame {
    private void initLayout() {
 
     // HEADER
-    headerPanel = new HeaderPanel(this::logout);
+    headerPanel = new HeaderPanel(this, this::logout);
     headerPanel.setBackground(Color.WHITE);
     headerPanel.setBorder(BorderFactory.createMatteBorder(0,0,1,0,new Color(230,230,230)));
     add(headerPanel, BorderLayout.NORTH);
 
     // SIDEBAR (MODERN)
-    if (!"CLERK".equalsIgnoreCase(role)) {
+    if (!"CLERK".equalsIgnoreCase(role) && !"BOOKING_CLERK".equalsIgnoreCase(role)) {
         SidebarPanel sidebar = new SidebarPanel(this, role);
-
-        sidebar.setBackground(Color.WHITE);
-        sidebar.setBorder(BorderFactory.createMatteBorder(0,0,0,1,new Color(230,230,230)));
-        sidebar.setPreferredSize(new Dimension(220, 0));
+        sidebar.setBorder(BorderFactory.createMatteBorder(0,0,0,1,new Color(232,236,242)));
+        sidebar.setPreferredSize(new Dimension(252, 0));
 
         add(sidebar, BorderLayout.WEST);
     }
@@ -133,16 +131,9 @@ public class MainFrame extends JFrame {
 
     /* ================= PRELOAD ================= */
 
-    private void preloadScreens(){
-
-        getScreen(SCREEN_SEARCH);
-        getScreen(SCREEN_BUS_LIST);
-        getScreen(SCREEN_BUS_DETAILS);
-        getScreen(SCREEN_SEATS);
-        getScreen(SCREEN_PASSENGER);
-        getScreen(SCREEN_PAYMENT);
-        getScreen(SCREEN_SUMMARY);
-        getScreen(SCREEN_TICKET_PREVIEW);
+    private String normalizeRole(String inputRole) {
+        if (inputRole == null || inputRole.isBlank()) return "USER";
+        return inputRole.trim().toUpperCase();
     }
 
     /* ================= LOGOUT ================= */
@@ -163,11 +154,7 @@ public class MainFrame extends JFrame {
 
         navigationHistory.clear();
 
-        if(role == null){
-            throw new RuntimeException("ROLE IS NULL");
-        }
-
-        switch(role.trim().toUpperCase()){
+        switch(role){
 
             case "CLERK":
             case "BOOKING_CLERK":
@@ -187,7 +174,7 @@ public class MainFrame extends JFrame {
                 break;
 
             default:
-                throw new RuntimeException("UNKNOWN ROLE: "+role);
+                showScreen(SCREEN_USER,false);
         }
     }
 
@@ -221,9 +208,11 @@ public class MainFrame extends JFrame {
             case "MANAGE_USERS": return new ManageUsersPanel();
             case "MANAGE_BUSES": return new ManageBusesPanel();
             case "MANAGE_ROUTES": return new ManageRoutesPanel();
+            case "ADMIN_ROUTE_MAP": return new ManageRoutesPanel();
             case "MANAGE_SCHEDULES": return new ManageSchedulesPanel();
             case "ADMIN_COMPLAINTS": return new AdminComplaintsPanel();
             case "ADMIN_NEWS": return new AdminNewsPanel();
+            case "ADMIN_BANNERS": return new AdminBannerPanel();
             case "REPORTS": return new ReportsPanel();
             case "ACCOUNTS": return new AccountsDashboard();
 
@@ -251,9 +240,11 @@ public class MainFrame extends JFrame {
         JPanel screen = screenCache.get(key);
 
         if(screen == null){
+            long start = System.nanoTime();
             screen = createScreen(key);
             screenCache.put(key,screen);
             contentPanel.add(screen,key);
+            logPerf("createScreen(" + key + ")", start);
         }
 
         return screen;
@@ -268,6 +259,7 @@ public class MainFrame extends JFrame {
     private void showScreen(String key, boolean trackHistory){
 
         if(key == null || key.equals(currentScreen)) return;
+        long start = System.nanoTime();
 
         if(trackHistory && currentScreen != null){
             navigationHistory.push(currentScreen);
@@ -275,6 +267,7 @@ public class MainFrame extends JFrame {
 
         currentScreen = key;
 
+        setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
         JPanel screen = getScreen(key);
 
         cardLayout.show(contentPanel,key);
@@ -283,12 +276,19 @@ public class MainFrame extends JFrame {
             headerPanel.setPageTitle(formatTitle(key));
         }
 
-        if(screen instanceof Refreshable){
-            ((Refreshable) screen).refreshData();
-        }
-
         contentPanel.revalidate();
         contentPanel.repaint();
+        setCursor(Cursor.getDefaultCursor());
+        logPerf("showScreen(" + key + ")", start);
+
+        // Trigger refresh after the new screen is visible so navigation feels instant.
+        if(screen instanceof Refreshable && shouldRefresh(key)){
+            SwingUtilities.invokeLater(() -> {
+                long refreshStart = System.nanoTime();
+                ((Refreshable) screen).refreshData();
+                logPerf("refreshData(" + key + ")", refreshStart);
+            });
+        }
     }
 
     /* ================= BACK ================= */
@@ -339,9 +339,29 @@ public class MainFrame extends JFrame {
             case SCREEN_CLERK: return "Booking Counter";
             case SCREEN_MANAGER: return "Manager Dashboard";
             case SCREEN_ADMIN: return "Admin Dashboard";
+            case "ADMIN_ROUTE_MAP": return "Route Map Management";
+            case "ADMIN_BANNERS": return "Banner Management";
 
             default:
                 return key.replace("_"," ");
+        }
+    }
+
+    private boolean shouldRefresh(String key) {
+        long now = System.nanoTime();
+        Long last = lastRefreshAtNanos.get(key);
+        if (last != null && now - last < REFRESH_THROTTLE_NS) {
+            return false;
+        }
+        lastRefreshAtNanos.put(key, now);
+        return true;
+    }
+
+    private void logPerf(String action, long startNanos) {
+        if (!PERF_LOG) return;
+        long ms = Math.max(0L, (System.nanoTime() - startNanos) / 1_000_000L);
+        if (ms >= 120) {
+            System.out.println("[Perf] " + action + " took " + ms + "ms");
         }
     }
 }

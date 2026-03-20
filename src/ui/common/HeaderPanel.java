@@ -1,109 +1,120 @@
 package ui.common;
 
+import config.UIConfig;
+import dao.NewsDAO;
 import util.IconUtil;
 import util.Session;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
+import java.util.ArrayList;
+import java.util.List;
 
 public class HeaderPanel extends JPanel {
 
+    private final MainFrame frame;
+    private final Runnable onLogout;
+    private final NewsDAO newsDAO = new NewsDAO();
+
     private JLabel pageTitle;
     private JLabel notificationBadge;
+    private JButton bellBtn;
+    private List<String[]> cachedNews = new ArrayList<>();
+    private long lastNewsRefreshMs = 0L;
 
-    public HeaderPanel(Runnable onLogout) {
+    public HeaderPanel(MainFrame frame, Runnable onLogout) {
+        this.frame = frame;
+        this.onLogout = onLogout;
 
         setLayout(new BorderLayout());
-        setPreferredSize(new Dimension(0, 65));
-
-        /* LIGHT HEADER */
+        setPreferredSize(new Dimension(0, 72));
         setBackground(Color.WHITE);
-        setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, new Color(230,230,230)));
         setBorder(new EmptyBorder(10, 20, 10, 20));
 
         add(leftSection(), BorderLayout.WEST);
         add(centerSection(), BorderLayout.CENTER);
-        add(rightSection(onLogout), BorderLayout.EAST);
+        add(rightSection(), BorderLayout.EAST);
+
+        refreshNotifications();
     }
 
-    /* ================= LEFT ================= */
-
     private JComponent leftSection() {
-
         JPanel panel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
         panel.setOpaque(false);
 
+        JLabel logo = new JLabel(IconUtil.load("buslogo.png", 28, 28));
         JLabel brand = new JLabel("BusYatra");
-        brand.setFont(new Font("Segoe UI", Font.BOLD, 18));
-        brand.setForeground(new Color(220, 53, 69)); // red branding
+        brand.setFont(new Font("Segoe UI", Font.BOLD, 20));
+        brand.setForeground(UIConfig.PRIMARY);
 
+        panel.add(logo);
         panel.add(brand);
-
         return panel;
     }
 
-    /* ================= CENTER ================= */
-
     private JComponent centerSection() {
-
         JPanel panel = new JPanel(new FlowLayout(FlowLayout.CENTER));
         panel.setOpaque(false);
 
         pageTitle = new JLabel("Dashboard");
-        pageTitle.setFont(new Font("Segoe UI", Font.BOLD, 16));
-        pageTitle.setForeground(new Color(50, 50, 50));
-
+        pageTitle.setFont(new Font("Segoe UI", Font.BOLD, 18));
+        pageTitle.setForeground(UIConfig.TEXT);
         panel.add(pageTitle);
-
         return panel;
     }
 
-    /* ================= RIGHT ================= */
-
-    private JComponent rightSection(Runnable onLogout) {
-
-        JPanel panel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 15, 0));
+    private JComponent rightSection() {
+        JPanel panel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 14, 0));
         panel.setOpaque(false);
-
         panel.add(notificationSection());
-        panel.add(profileSection(onLogout));
-
+        panel.add(profileSection());
         return panel;
     }
 
-    /* ================= PROFILE ================= */
-
-    private JComponent profileSection(Runnable onLogout) {
-
-        JPanel profile = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
-        profile.setBackground(new Color(245, 245, 245));
-        profile.setBorder(BorderFactory.createEmptyBorder(4, 10, 4, 10));
+    private JComponent profileSection() {
+        JPanel profile = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 5));
+        profile.setBackground(new Color(248, 250, 252));
+        profile.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(230, 234, 240)),
+                BorderFactory.createEmptyBorder(4, 10, 4, 10)
+        ));
         profile.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 
-        JLabel avatar = new JLabel(IconUtil.load("user.png", 24, 24));
-
-        String userName = (Session.username != null) ? Session.username : "User";
+        JLabel avatar = new JLabel(IconUtil.loadTinted("user.png", 20, 20, new Color(71, 85, 105)));
+        String userName = (Session.username != null && !Session.username.isBlank())
+                ? Session.username
+                : ((Session.userEmail != null && Session.userEmail.contains("@"))
+                ? Session.userEmail.substring(0, Session.userEmail.indexOf('@'))
+                : "User");
+        String roleText = (Session.role == null || Session.role.isBlank()) ? "USER" : Session.role.trim().toUpperCase();
 
         JLabel username = new JLabel(userName);
-        username.setForeground(new Color(50,50,50));
+        username.setForeground(UIConfig.TEXT);
         username.setFont(new Font("Segoe UI", Font.BOLD, 13));
 
-        JLabel arrow = new JLabel("▾");
-        arrow.setForeground(Color.GRAY);
+        JLabel roleBadge = new JLabel(roleText);
+        roleBadge.setOpaque(true);
+        roleBadge.setBackground(new Color(239, 246, 255));
+        roleBadge.setForeground(new Color(30, 64, 175));
+        roleBadge.setFont(new Font("Segoe UI", Font.BOLD, 10));
+        roleBadge.setBorder(BorderFactory.createEmptyBorder(2, 6, 2, 6));
+
+        JLabel arrow = new JLabel("v");
+        arrow.setForeground(UIConfig.TEXT_LIGHT);
 
         profile.add(avatar);
         profile.add(username);
+        profile.add(roleBadge);
         profile.add(arrow);
 
-        /* DROPDOWN */
-
         JPopupMenu menu = new JPopupMenu();
-
         JMenuItem profileItem = new JMenuItem("My Profile");
         JMenuItem settingsItem = new JMenuItem("Settings");
         JMenuItem logoutItem = new JMenuItem("Logout");
 
+        profileItem.addActionListener(e -> new ProfileDialog(frame, frame));
+        settingsItem.addActionListener(e -> frame.showScreen(MainFrame.SCREEN_SETTINGS));
         logoutItem.addActionListener(e -> onLogout.run());
 
         menu.add(profileItem);
@@ -112,6 +123,7 @@ public class HeaderPanel extends JPanel {
         menu.add(logoutItem);
 
         profile.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
             public void mouseClicked(java.awt.event.MouseEvent evt) {
                 menu.show(profile, 0, profile.getHeight());
             }
@@ -120,22 +132,18 @@ public class HeaderPanel extends JPanel {
         return profile;
     }
 
-    /* ================= NOTIFICATION ================= */
-
     private JComponent notificationSection() {
-
         JPanel container = new JPanel(null);
         container.setOpaque(false);
         container.setPreferredSize(new Dimension(36, 36));
 
-        JButton bell = new JButton(
-                IconUtil.load("notification.png", 20, 20)
-        );
-
-        bell.setBounds(8, 8, 20, 20);
-        bell.setBorderPainted(false);
-        bell.setContentAreaFilled(false);
-        bell.setFocusPainted(false);
+        bellBtn = new JButton(IconUtil.loadTinted("notification.png", 18, 18, new Color(71, 85, 105)));
+        bellBtn.setBounds(8, 8, 20, 20);
+        bellBtn.setBorderPainted(false);
+        bellBtn.setContentAreaFilled(false);
+        bellBtn.setFocusPainted(false);
+        bellBtn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        bellBtn.addActionListener(e -> showNewsPopup());
 
         notificationBadge = new JLabel("0");
         notificationBadge.setOpaque(true);
@@ -143,29 +151,76 @@ public class HeaderPanel extends JPanel {
         notificationBadge.setForeground(Color.WHITE);
         notificationBadge.setFont(new Font("Segoe UI", Font.BOLD, 10));
         notificationBadge.setHorizontalAlignment(SwingConstants.CENTER);
-
         notificationBadge.setBounds(20, 2, 16, 16);
         notificationBadge.setVisible(false);
 
-        container.add(bell);
+        container.add(bellBtn);
         container.add(notificationBadge);
-
         return container;
     }
 
-    /* ================= METHODS ================= */
+    private void showNewsPopup() {
+        JPopupMenu popup = new JPopupMenu();
+        popup.setBorder(BorderFactory.createLineBorder(new Color(225, 229, 236)));
+
+        if (cachedNews == null || cachedNews.isEmpty()) {
+            JMenuItem empty = new JMenuItem("No notifications");
+            empty.setEnabled(false);
+            popup.add(empty);
+        } else {
+            int limit = Math.min(6, cachedNews.size());
+            for (int i = 0; i < limit; i++) {
+                String[] n = cachedNews.get(i);
+                String msg = n.length > 1 ? n[1] : "Update";
+                if (msg.length() > 70) {
+                    msg = msg.substring(0, 67) + "...";
+                }
+                JMenuItem item = new JMenuItem(msg);
+                item.addActionListener(e -> frame.showScreen(MainFrame.SCREEN_USER));
+                popup.add(item);
+            }
+        }
+
+        popup.show(bellBtn, -170, bellBtn.getHeight() + 6);
+    }
+
+    private void refreshNotifications() {
+        long now = System.currentTimeMillis();
+        if (now - lastNewsRefreshMs < 20_000L && cachedNews != null && !cachedNews.isEmpty()) {
+            setNotificationCount(cachedNews.size());
+            return;
+        }
+        SwingWorker<List<String[]>, Void> worker = new SwingWorker<>() {
+            @Override
+            protected List<String[]> doInBackground() {
+                return newsDAO.getActiveNews();
+            }
+
+            @Override
+            protected void done() {
+                try {
+                    cachedNews = get();
+                    lastNewsRefreshMs = System.currentTimeMillis();
+                    setNotificationCount(cachedNews == null ? 0 : cachedNews.size());
+                } catch (Exception ignored) {
+                    setNotificationCount(0);
+                }
+            }
+        };
+        worker.execute();
+    }
 
     public void setPageTitle(String title) {
         pageTitle.setText(title);
+        refreshNotifications();
     }
 
     public void setNotificationCount(int count) {
-
         if (count <= 0) {
             notificationBadge.setVisible(false);
         } else {
             notificationBadge.setVisible(true);
-            notificationBadge.setText(String.valueOf(count));
+            notificationBadge.setText(String.valueOf(Math.min(count, 9)));
         }
     }
 }

@@ -9,225 +9,219 @@ import util.SessionManager;
 
 import javax.swing.*;
 import java.awt.*;
-import java.sql.ResultSet;
 
 public class LoginFrame extends JFrame {
 
-private JTextField emailField;
-private JPasswordField passField;
-private JCheckBox showPass;
+    private JTextField emailField;
+    private JPasswordField passField;
+    private JCheckBox showPass;
+    private JButton loginBtn;
+    private JLabel statusLbl;
+    private volatile boolean loginInProgress = false;
+    private final UserDAO userDAO = new UserDAO();
 
-public LoginFrame(){
+    public LoginFrame(){
 
-    setTitle("BusYatra - Login");
-    setSize(900,580);
-    setLocationRelativeTo(null);
-    setDefaultCloseOperation(EXIT_ON_CLOSE);
-    setLayout(new BorderLayout());
-    getContentPane().setBackground(UIConfig.BACKGROUND);
+        setTitle("BusYatra - Login");
+        setSize(900,580);
+        setLocationRelativeTo(null);
+        setDefaultCloseOperation(EXIT_ON_CLOSE);
+        setLayout(new BorderLayout());
+        getContentPane().setBackground(UIConfig.BACKGROUND);
 
-    add(topBanner(),BorderLayout.NORTH);
-    add(centerCard(),BorderLayout.CENTER);
+        add(topBanner(),BorderLayout.NORTH);
+        add(centerCard(),BorderLayout.CENTER);
 
-    SwingUtilities.invokeLater(() -> emailField.requestFocus());
+        SwingUtilities.invokeLater(() -> emailField.requestFocus());
+        getRootPane().setDefaultButton(loginBtn);
 
-    setVisible(true);
-}
+        setVisible(true);
+    }
 
-/* ================= TOP BANNER ================= */
+    private JPanel topBanner(){
 
-private JPanel topBanner(){
+        JPanel banner = new JPanel(){
+            protected void paintComponent(Graphics g){
 
-    JPanel banner = new JPanel(){
-        protected void paintComponent(Graphics g){
+                Graphics2D g2=(Graphics2D)g;
 
-            Graphics2D g2=(Graphics2D)g;
+                GradientPaint gp=new GradientPaint(
+                        0,0,UIConfig.PRIMARY,
+                        getWidth(),getHeight(),UIConfig.PRIMARY.darker()
+                );
 
-            GradientPaint gp=new GradientPaint(
-                    0,0,UIConfig.PRIMARY,
-                    getWidth(),getHeight(),UIConfig.PRIMARY.darker()
-            );
+                g2.setPaint(gp);
+                g2.fillRect(0,0,getWidth(),getHeight());
+            }
+        };
 
-            g2.setPaint(gp);
-            g2.fillRect(0,0,getWidth(),getHeight());
-        }
-    };
+        banner.setPreferredSize(new Dimension(900,160));
+        banner.setLayout(new BoxLayout(banner,BoxLayout.Y_AXIS));
 
-    banner.setPreferredSize(new Dimension(900,160));
-    banner.setLayout(new BoxLayout(banner,BoxLayout.Y_AXIS));
+        JLabel logo = new JLabel(IconUtil.load("buslogo.png",70,70));
+        logo.setAlignmentX(Component.CENTER_ALIGNMENT);
 
-    JLabel logo = new JLabel(IconUtil.load("bus.png",70,70));
-    logo.setAlignmentX(Component.CENTER_ALIGNMENT);
+        JLabel title = new JLabel("BusYatra");
+        title.setFont(new Font("Segoe UI",Font.BOLD,34));
+        title.setForeground(Color.WHITE);
+        title.setAlignmentX(Component.CENTER_ALIGNMENT);
 
-    JLabel title = new JLabel("BusYatra");
-    title.setFont(new Font("Segoe UI",Font.BOLD,34));
-    title.setForeground(Color.WHITE);
-    title.setAlignmentX(Component.CENTER_ALIGNMENT);
+        JLabel sub = new JLabel("Book - Track - Travel Smart");
+        sub.setFont(UIConfig.FONT_SMALL);
+        sub.setForeground(Color.WHITE);
+        sub.setAlignmentX(Component.CENTER_ALIGNMENT);
 
-    JLabel sub = new JLabel("Book • Track • Travel Smart");
-    sub.setFont(UIConfig.FONT_SMALL);
-    sub.setForeground(Color.WHITE);
-    sub.setAlignmentX(Component.CENTER_ALIGNMENT);
+        banner.add(Box.createVerticalStrut(15));
+        banner.add(logo);
+        banner.add(Box.createVerticalStrut(8));
+        banner.add(title);
+        banner.add(sub);
 
-    banner.add(Box.createVerticalStrut(15));
-    banner.add(logo);
-    banner.add(Box.createVerticalStrut(8));
-    banner.add(title);
-    banner.add(sub);
+        return banner;
+    }
 
-    return banner;
-}
+    private JPanel centerCard(){
 
-/* ================= CENTER CARD ================= */
+        JPanel bg = new JPanel(new GridBagLayout());
+        bg.setBackground(UIConfig.BACKGROUND);
 
-private JPanel centerCard(){
+        JPanel card = new JPanel();
+        card.setLayout(new BoxLayout(card,BoxLayout.Y_AXIS));
+        card.setPreferredSize(new Dimension(380,400));
 
-    JPanel bg = new JPanel(new GridBagLayout());
-    bg.setBackground(UIConfig.BACKGROUND);
+        UIConfig.styleCard(card);
 
-    JPanel card = new JPanel();
-    card.setLayout(new BoxLayout(card,BoxLayout.Y_AXIS));
-    card.setPreferredSize(new Dimension(380,400));
+        card.add(cardHeader());
+        card.add(Box.createVerticalStrut(20));
+        card.add(cardForm());
+        card.add(Box.createVerticalStrut(15));
+        card.add(cardFooter());
 
-    UIConfig.styleCard(card);
+        bg.add(card);
 
-    card.add(cardHeader());
-    card.add(Box.createVerticalStrut(20));
-    card.add(cardForm());
-    card.add(Box.createVerticalStrut(15));
-    card.add(cardFooter());
+        return bg;
+    }
 
-    bg.add(card);
+    private JPanel cardHeader(){
 
-    return bg;
-}
+        JPanel p=new JPanel();
+        p.setOpaque(false);
+        p.setLayout(new BoxLayout(p,BoxLayout.Y_AXIS));
 
-/* ================= HEADER ================= */
+        JLabel h=new JLabel("Login");
+        h.setFont(UIConfig.FONT_TITLE);
+        h.setAlignmentX(Component.CENTER_ALIGNMENT);
 
-private JPanel cardHeader(){
+        JLabel sub=new JLabel("Welcome back, please login");
+        sub.setFont(UIConfig.FONT_SMALL);
+        sub.setForeground(UIConfig.TEXT_LIGHT);
+        sub.setAlignmentX(Component.CENTER_ALIGNMENT);
 
-    JPanel p=new JPanel();
-    p.setOpaque(false);
-    p.setLayout(new BoxLayout(p,BoxLayout.Y_AXIS));
+        p.add(h);
+        p.add(Box.createVerticalStrut(5));
+        p.add(sub);
 
-    JLabel h=new JLabel("Login");
-    h.setFont(UIConfig.FONT_TITLE);
-    h.setAlignmentX(Component.CENTER_ALIGNMENT);
+        return p;
+    }
 
-    JLabel sub=new JLabel("Welcome back, please login");
-    sub.setFont(UIConfig.FONT_SMALL);
-    sub.setForeground(UIConfig.TEXT_LIGHT);
-    sub.setAlignmentX(Component.CENTER_ALIGNMENT);
+    private JPanel cardForm(){
 
-    p.add(h);
-    p.add(Box.createVerticalStrut(5));
-    p.add(sub);
+        JPanel form=new JPanel();
+        form.setLayout(new BoxLayout(form,BoxLayout.Y_AXIS));
+        form.setOpaque(false);
 
-    return p;
-}
+        emailField = field("Email Address");
+        passField = passwordField("Password");
 
-/* ================= FORM ================= */
+        passField.addActionListener(e -> doLogin());
 
-private JPanel cardForm(){
+        showPass = new JCheckBox("Show password");
+        showPass.setOpaque(false);
 
-    JPanel form=new JPanel();
-    form.setLayout(new BoxLayout(form,BoxLayout.Y_AXIS));
-    form.setOpaque(false);
+        showPass.addActionListener(e -> {
+            passField.setEchoChar(showPass.isSelected() ? (char)0 : '\u2022');
+        });
 
-    emailField = field("Email Address");
-    passField = passwordField("Password");
+        loginBtn = btn("Login",true);
+        loginBtn.addActionListener(e -> doLogin());
 
-    passField.addActionListener(e -> doLogin());
+        form.add(emailField);
+        form.add(Box.createVerticalStrut(12));
+        form.add(passField);
+        form.add(Box.createVerticalStrut(6));
+        form.add(showPass);
+        form.add(Box.createVerticalStrut(15));
+        form.add(loginBtn);
+        form.add(Box.createVerticalStrut(8));
 
-    showPass = new JCheckBox("Show password");
-    showPass.setOpaque(false);
+        statusLbl = new JLabel(" ");
+        statusLbl.setForeground(UIConfig.TEXT_LIGHT);
+        form.add(statusLbl);
 
-    showPass.addActionListener(e -> {
-        passField.setEchoChar(showPass.isSelected() ? (char)0 : '•');
-    });
+        return form;
+    }
 
-    JButton loginBtn = btn("Login",true);
-    loginBtn.addActionListener(e -> doLogin());
+    private JPanel cardFooter(){
 
-    form.add(emailField);
-    form.add(Box.createVerticalStrut(12));
-    form.add(passField);
-    form.add(Box.createVerticalStrut(6));
-    form.add(showPass);
-    form.add(Box.createVerticalStrut(15));
-    form.add(loginBtn);
+        JPanel footer=new JPanel();
+        footer.setLayout(new BoxLayout(footer,BoxLayout.Y_AXIS));
+        footer.setOpaque(false);
 
-    return form;
-}
+        JButton forgotBtn=new JButton("Forgot Password?");
+        forgotBtn.setContentAreaFilled(false);
+        forgotBtn.setBorderPainted(false);
+        forgotBtn.setForeground(UIConfig.PRIMARY);
+        forgotBtn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        forgotBtn.setAlignmentX(Component.CENTER_ALIGNMENT);
 
-/* ================= FOOTER ================= */
+        forgotBtn.addActionListener(e -> {
+            dispose();
+            new ForgotPasswordFrame();
+        });
 
-private JPanel cardFooter(){
+        JButton registerBtn = btn("Create New Account",false);
+        UIConfig.successBtn(registerBtn);
 
-    JPanel footer=new JPanel();
-    footer.setLayout(new BoxLayout(footer,BoxLayout.Y_AXIS));
-    footer.setOpaque(false);
+        registerBtn.addActionListener(e -> {
+            dispose();
+            new RegisterFrame();
+        });
 
-    JButton forgotBtn=new JButton("Forgot Password?");
-    forgotBtn.setContentAreaFilled(false);
-    forgotBtn.setBorderPainted(false);
-    forgotBtn.setForeground(UIConfig.PRIMARY);
-    forgotBtn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-    forgotBtn.setAlignmentX(Component.CENTER_ALIGNMENT);
+        footer.add(forgotBtn);
+        footer.add(Box.createVerticalStrut(10));
+        footer.add(registerBtn);
 
-    forgotBtn.addActionListener(e -> {
-        dispose();
-        new ForgotPasswordFrame();
-    });
+        return footer;
+    }
 
-    JButton registerBtn = btn("Create New Account",false);
-    UIConfig.successBtn(registerBtn);
+    private JTextField field(String title){
+        JTextField f = new JTextField();
+        UIConfig.styleField(f);
+        f.setMaximumSize(new Dimension(Integer.MAX_VALUE,45));
+        f.setBorder(BorderFactory.createTitledBorder(title));
+        return f;
+    }
 
-    registerBtn.addActionListener(e -> {
-        dispose();
-        new RegisterFrame();
-    });
+    private JPasswordField passwordField(String title){
+        JPasswordField f = new JPasswordField();
+        UIConfig.styleField(f);
+        f.setMaximumSize(new Dimension(Integer.MAX_VALUE,45));
+        f.setBorder(BorderFactory.createTitledBorder(title));
+        return f;
+    }
 
-    footer.add(forgotBtn);
-    footer.add(Box.createVerticalStrut(10));
-    footer.add(registerBtn);
+    private JButton btn(String text, boolean primary){
+        JButton b = new JButton(text);
+        b.setMaximumSize(new Dimension(Integer.MAX_VALUE,45));
+        b.setAlignmentX(Component.CENTER_ALIGNMENT);
 
-    return footer;
-}
+        if(primary) UIConfig.primaryBtn(b);
 
-/* ================= HELPERS ================= */
+        return b;
+    }
 
-private JTextField field(String title){
-    JTextField f = new JTextField();
-    UIConfig.styleField(f);
-    f.setMaximumSize(new Dimension(Integer.MAX_VALUE,45));
-    f.setBorder(BorderFactory.createTitledBorder(title));
-    return f;
-}
-
-private JPasswordField passwordField(String title){
-    JPasswordField f = new JPasswordField();
-    UIConfig.styleField(f);
-    f.setMaximumSize(new Dimension(Integer.MAX_VALUE,45));
-    f.setBorder(BorderFactory.createTitledBorder(title));
-    return f;
-}
-
-private JButton btn(String text, boolean primary){
-    JButton b = new JButton(text);
-    b.setMaximumSize(new Dimension(Integer.MAX_VALUE,45));
-    b.setAlignmentX(Component.CENTER_ALIGNMENT);
-
-    if(primary) UIConfig.primaryBtn(b);
-
-    return b;
-}
-
-/* ================= LOGIN ================= */
-
-private void doLogin(){
-
-    try{
+    private void doLogin(){
+        if (loginInProgress) return;
 
         String email=emailField.getText().trim();
         String pass=new String(passField.getPassword()).trim();
@@ -237,35 +231,79 @@ private void doLogin(){
             return;
         }
 
-        ResultSet rs=new UserDAO().loginUser(email,pass);
+        loginInProgress = true;
+        setLoginLoading(true);
+        statusLbl.setText("Signing in...");
 
-        if(rs!=null && rs.next()){
+        SwingWorker<String[], Void> worker = new SwingWorker<>() {
+            private String errorMessage = "Invalid credentials";
 
-            Session.userId=rs.getInt("id");
-            Session.username=rs.getString("name");
-            Session.role=rs.getString("role").trim().toUpperCase();
-            Session.userEmail=rs.getString("email");
+            @Override
+            protected String[] doInBackground() {
+                String[] user = userDAO.loginUser(email, pass);
+                if (user == null) {
+                    errorMessage = userDAO.getLastError();
+                }
+                return user;
+            }
 
-            SessionManager.saveLogin(Session.userId,Session.role);
+            @Override
+            protected void done() {
+                loginInProgress = false;
+                setLoginLoading(false);
+                try {
+                    String[] user = get();
+                    if(user != null){
+                        Session.userId=Integer.parseInt(user[0]);
+                        Session.username=user[1];
+                        Session.userEmail=user[2];
+                        Session.role=user[3].trim().toUpperCase();
 
-            dispose();
-            new MainFrame(Session.username,Session.role);
+                        SessionManager.saveLogin(Session.userId,Session.role);
+                        SessionManager.saveUserMeta(Session.username, Session.userEmail);
+                        statusLbl.setText("Opening dashboard...");
+                        Timer openTimer = new Timer(80, evt -> {
+                            dispose();
+                            new MainFrame(Session.username,Session.role);
+                        });
+                        openTimer.setRepeats(false);
+                        openTimer.start();
 
-        }else{
-            JOptionPane.showMessageDialog(
-                    this,
-                    "Invalid credentials ❌",
-                    "Login Failed",
-                    JOptionPane.ERROR_MESSAGE
-            );
-        }
+                    }else{
+                        statusLbl.setText("Sign in failed");
+                        JOptionPane.showMessageDialog(
+                                LoginFrame.this,
+                                "Login failed.\nReason: " + errorMessage,
+                                "Login Failed",
+                                JOptionPane.ERROR_MESSAGE
+                        );
+                    }
 
-    }catch(Exception e){
+                }catch(Exception e){
+                    statusLbl.setText("Sign in failed");
+                    JOptionPane.showMessageDialog(
+                            LoginFrame.this,
+                            "Database error.\nReason: " + e.getMessage(),
+                            "Login Failed",
+                            JOptionPane.ERROR_MESSAGE
+                    );
+                }
+            }
+        };
 
-        e.printStackTrace();
-
-        JOptionPane.showMessageDialog(this,"Database error ❌");
+        worker.execute();
     }
-}
 
+    private void setLoginLoading(boolean loading) {
+        if (loginBtn == null) return;
+
+        loginBtn.setEnabled(!loading);
+        loginBtn.setText(loading ? "Signing In..." : "Login");
+        loginBtn.setCursor(loading
+                ? Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR)
+                : Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        emailField.setEnabled(!loading);
+        passField.setEnabled(!loading);
+        showPass.setEnabled(!loading);
+    }
 }

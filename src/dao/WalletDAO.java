@@ -8,9 +8,63 @@ import java.util.List;
 
 public class WalletDAO {
 
+    private volatile boolean walletSchemaChecked = false;
+
+    private void ensureWalletSchema() {
+
+        if (walletSchemaChecked) return;
+
+        String walletSql =
+                "CREATE TABLE IF NOT EXISTS wallets (" +
+                "id INT PRIMARY KEY AUTO_INCREMENT," +
+                "user_id INT NOT NULL UNIQUE," +
+                "balance DECIMAL(12,2) NOT NULL DEFAULT 0," +
+                "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP" +
+                ")";
+
+        String txSql =
+                "CREATE TABLE IF NOT EXISTS wallet_transactions (" +
+                "id INT PRIMARY KEY AUTO_INCREMENT," +
+                "user_id INT NOT NULL," +
+                "type VARCHAR(20) NOT NULL," +
+                "amount DECIMAL(12,2) NOT NULL," +
+                "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP" +
+                ")";
+
+        try (Connection con = DBConfig.getConnection();
+             PreparedStatement ps1 = con.prepareStatement(walletSql);
+             PreparedStatement ps2 = con.prepareStatement(txSql)) {
+
+            ps1.executeUpdate();
+            ps2.executeUpdate();
+            walletSchemaChecked = true;
+
+        } catch (Exception ignored) {
+            // Keep graceful fallbacks in wallet reads.
+        }
+    }
+
     /* ================= CREATE WALLET ================= */
 
+    private boolean columnExists(String table, String column) {
+        String sql =
+                "SELECT 1 FROM information_schema.columns " +
+                "WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ? LIMIT 1";
+        try (Connection con = DBConfig.getConnection();
+             PreparedStatement ps = con.prepareStatement(sql)) {
+            ps.setString(1, table);
+            ps.setString(2, column);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next();
+            }
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     private void createWalletIfNotExists(int userId){
+
+        ensureWalletSchema();
 
         String sql =
                 "INSERT IGNORE INTO wallets(user_id,balance) VALUES (?,0)";
@@ -22,7 +76,7 @@ public class WalletDAO {
             ps.executeUpdate();
 
         }catch(Exception e){
-            e.printStackTrace();
+            // no-op
         }
     }
 
@@ -46,7 +100,7 @@ public class WalletDAO {
             }
 
         } catch (Exception e) {
-            e.printStackTrace();
+            // no-op
         }
 
         return 0;
@@ -61,10 +115,10 @@ public class WalletDAO {
         String updateSql =
                 "UPDATE wallets SET balance = balance + ? WHERE user_id=?";
 
-        String logSql =
-                "INSERT INTO wallet_transactions " +
-                "(user_id, type, amount, status, created_at) " +
-                "VALUES (?,?,?,?,NOW())";
+        boolean hasStatus = columnExists("wallet_transactions", "status");
+        String logSql = hasStatus
+                ? "INSERT INTO wallet_transactions (user_id, type, amount, status, created_at) VALUES (?,?,?,?,NOW())"
+                : "INSERT INTO wallet_transactions (user_id, type, amount, created_at) VALUES (?,?,?,NOW())";
 
         try (Connection con = DBConfig.getConnection()) {
 
@@ -86,7 +140,9 @@ public class WalletDAO {
                 log.setInt(1, userId);
                 log.setString(2, "CREDIT");
                 log.setDouble(3, amount);
-                log.setString(4, "SUCCESS");
+                if (hasStatus) {
+                    log.setString(4, "SUCCESS");
+                }
 
                 log.executeUpdate();
 
@@ -96,11 +152,10 @@ public class WalletDAO {
             } catch (Exception e) {
 
                 con.rollback();
-                e.printStackTrace();
             }
 
         } catch (Exception e) {
-            e.printStackTrace();
+            // no-op
         }
 
         return false;
@@ -116,10 +171,10 @@ public class WalletDAO {
                 "UPDATE wallets SET balance = balance - ? " +
                 "WHERE user_id=? AND balance >= ?";
 
-        String logSql =
-                "INSERT INTO wallet_transactions " +
-                "(user_id, type, amount, status, created_at) " +
-                "VALUES (?,?,?,?,NOW())";
+        boolean hasStatus = columnExists("wallet_transactions", "status");
+        String logSql = hasStatus
+                ? "INSERT INTO wallet_transactions (user_id, type, amount, status, created_at) VALUES (?,?,?,?,NOW())"
+                : "INSERT INTO wallet_transactions (user_id, type, amount, created_at) VALUES (?,?,?,NOW())";
 
         try (Connection con = DBConfig.getConnection()) {
 
@@ -142,7 +197,9 @@ public class WalletDAO {
                 log.setInt(1, userId);
                 log.setString(2, "DEBIT");
                 log.setDouble(3, -amount);
-                log.setString(4, "SUCCESS");
+                if (hasStatus) {
+                    log.setString(4, "SUCCESS");
+                }
 
                 log.executeUpdate();
 
@@ -152,11 +209,10 @@ public class WalletDAO {
             } catch (Exception e) {
 
                 con.rollback();
-                e.printStackTrace();
             }
 
         } catch (Exception e) {
-            e.printStackTrace();
+            // no-op
         }
 
         return false;
@@ -175,11 +231,10 @@ public class WalletDAO {
 
         List<String[]> list = new ArrayList<>();
 
-        String sql =
-                "SELECT created_at, type, amount, status " +
-                "FROM wallet_transactions " +
-                "WHERE user_id=? " +
-                "ORDER BY created_at DESC";
+        boolean hasStatus = columnExists("wallet_transactions", "status");
+        String sql = hasStatus
+                ? "SELECT created_at, type, amount, status FROM wallet_transactions WHERE user_id=? ORDER BY created_at DESC"
+                : "SELECT created_at, type, amount, 'SUCCESS' AS status FROM wallet_transactions WHERE user_id=? ORDER BY created_at DESC";
 
         try (Connection con = DBConfig.getConnection();
              PreparedStatement ps = con.prepareStatement(sql)) {
@@ -199,7 +254,7 @@ public class WalletDAO {
             }
 
         } catch (Exception e) {
-            e.printStackTrace();
+            // no-op
         }
 
         return list;
