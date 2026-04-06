@@ -1,140 +1,135 @@
 package util;
 
-import java.util.prefs.Preferences;
-
 public class PreferencesUtil {
 
-    private static final Preferences prefs =
-            Preferences.userRoot().node("BusYatra");
-
-    /* ================= THEME ================= */
+    
 
     public static void setTheme(String theme) {
-        prefs.put("theme", theme);
+        SafePreferences.put("theme", theme);
     }
 
     public static String getTheme() {
-        return prefs.get("theme", "LIGHT");
+        return SafePreferences.get("theme", "LIGHT");
     }
 
-    /* ================= NOTIFICATIONS ================= */
+    
 
     public static void setNotifications(boolean value) {
-        prefs.putBoolean("notifications", value);
+        SafePreferences.putBoolean("notifications", value);
     }
 
     public static boolean getNotifications() {
-        return prefs.getBoolean("notifications", true);
+        return SafePreferences.getBoolean("notifications", true);
     }
 
     public static void setEmailNotifications(boolean value) {
-        prefs.putBoolean("emailNotifications", value);
+        SafePreferences.putBoolean("emailNotifications", value);
     }
 
     public static boolean getEmailNotifications() {
-        return prefs.getBoolean("emailNotifications", true);
+        return SafePreferences.getBoolean("emailNotifications", true);
     }
 
     public static void setSMSNotifications(boolean value) {
-        prefs.putBoolean("smsNotifications", value);
+        SafePreferences.putBoolean("smsNotifications", value);
     }
 
     public static boolean getSMSNotifications() {
-        return prefs.getBoolean("smsNotifications", false);
+        return SafePreferences.getBoolean("smsNotifications", false);
     }
 
     public static void setPromoNotifications(boolean value) {
-        prefs.putBoolean("promoNotifications", value);
+        SafePreferences.putBoolean("promoNotifications", value);
     }
 
     public static boolean getPromoNotifications() {
-        return prefs.getBoolean("promoNotifications", true);
+        return SafePreferences.getBoolean("promoNotifications", true);
     }
 
     public static void setSoundNotifications(boolean value) {
-        prefs.putBoolean("soundNotifications", value);
+        SafePreferences.putBoolean("soundNotifications", value);
     }
 
     public static boolean getSoundNotifications() {
-        return prefs.getBoolean("soundNotifications", true);
+        return SafePreferences.getBoolean("soundNotifications", true);
     }
 
-    /* ================= AUTO LOGOUT ================= */
+    
 
     public static void setAutoLogout(boolean value) {
-        prefs.putBoolean("autoLogout", value);
+        SafePreferences.putBoolean("autoLogout", value);
     }
 
     public static boolean getAutoLogout() {
-        return prefs.getBoolean("autoLogout", false);
+        return SafePreferences.getBoolean("autoLogout", false);
     }
 
-    /* ================= UI SETTINGS ================= */
+    
 
     public static void setRememberFilters(boolean value) {
-        prefs.putBoolean("rememberFilters", value);
+        SafePreferences.putBoolean("rememberFilters", value);
     }
 
     public static boolean getRememberFilters() {
-        return prefs.getBoolean("rememberFilters", true);
+        return SafePreferences.getBoolean("rememberFilters", true);
     }
 
     public static void setConfirmBeforePayment(boolean value) {
-        prefs.putBoolean("confirmPayment", value);
+        SafePreferences.putBoolean("confirmPayment", value);
     }
 
     public static boolean getConfirmBeforePayment() {
-        return prefs.getBoolean("confirmPayment", true);
+        return SafePreferences.getBoolean("confirmPayment", true);
     }
 
     public static void setShowTooltips(boolean value) {
-        prefs.putBoolean("showTooltips", value);
+        SafePreferences.putBoolean("showTooltips", value);
     }
 
     public static boolean getShowTooltips() {
-        return prefs.getBoolean("showTooltips", true);
+        return SafePreferences.getBoolean("showTooltips", true);
     }
 
     public static void setCompactMode(boolean value) {
-        prefs.putBoolean("compactMode", value);
+        SafePreferences.putBoolean("compactMode", value);
     }
 
     public static boolean getCompactMode() {
-        return prefs.getBoolean("compactMode", false);
+        return SafePreferences.getBoolean("compactMode", false);
     }
 
-    /* ================= SECURITY ================= */
+    
 
     public static void setTwoFactor(boolean value) {
-        prefs.putBoolean("twoFactor", value);
+        SafePreferences.putBoolean("twoFactor", value);
     }
 
     public static boolean getTwoFactor() {
-        return prefs.getBoolean("twoFactor", false);
+        return SafePreferences.getBoolean("twoFactor", false);
     }
 
     public static void setDeviceLock(boolean value) {
-        prefs.putBoolean("deviceLock", value);
+        SafePreferences.putBoolean("deviceLock", value);
     }
 
     public static boolean getDeviceLock() {
-        return prefs.getBoolean("deviceLock", false);
+        return SafePreferences.getBoolean("deviceLock", false);
     }
 
     public static void setHideBalance(boolean value) {
-        prefs.putBoolean("hideBalance", value);
+        SafePreferences.putBoolean("hideBalance", value);
     }
 
     public static boolean getHideBalance() {
-        return prefs.getBoolean("hideBalance", false);
+        return SafePreferences.getBoolean("hideBalance", false);
     }
 
     public static void setLoginAlerts(boolean value) {
-        prefs.putBoolean("loginAlerts", value);
+        SafePreferences.putBoolean("loginAlerts", value);
     }
 
     public static boolean getLoginAlerts() {
-        return prefs.getBoolean("loginAlerts", true);
+        return SafePreferences.getBoolean("loginAlerts", true);
     }
 }
 

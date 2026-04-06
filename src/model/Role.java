@@ -4,9 +4,9 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
 
-/**
- * System roles used across BusYatra
- */
+
+
+
 public final class Role {
 
     public static final String USER = "USER";
@@ -25,20 +25,20 @@ public final class Role {
 
     private Role() {}
 
-    /* ================= ALL ROLES ================= */
+    
 
     public static Set<String> getAllRoles() {
         return Collections.unmodifiableSet(ROLES);
     }
 
-    /* ================= VALIDATION ================= */
+    
 
     public static boolean isValidRole(String role) {
         if (role == null) return false;
         return ROLES.contains(role.toUpperCase());
     }
 
-    /* ================= CHECKERS ================= */
+    
 
     public static boolean isAdmin(String role) {
         return ADMIN.equalsIgnoreCase(role);

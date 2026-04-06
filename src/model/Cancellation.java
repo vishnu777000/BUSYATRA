@@ -14,11 +14,11 @@ public class Cancellation {
 
     private LocalDateTime cancelledAt;
 
-    // Status constants
+    
     public static final String STATUS_PENDING = "PENDING";
     public static final String STATUS_REFUNDED = "REFUNDED";
 
-    /* ================= CONSTRUCTORS ================= */
+    
 
     public Cancellation() {}
 
@@ -29,7 +29,7 @@ public class Cancellation {
         this.userId = userId;
         this.reason = reason;
         this.refundAmount = refundAmount;
-        this.status = STATUS_PENDING; // 🔥 fixed
+        this.status = STATUS_PENDING; 
         this.cancelledAt = LocalDateTime.now();
     }
 
@@ -46,7 +46,7 @@ public class Cancellation {
         this.cancelledAt = cancelledAt;
     }
 
-    /* ================= GETTERS & SETTERS ================= */
+    
 
     public int getId() { return id; }
     public void setId(int id) { this.id = id; }
@@ -76,7 +76,7 @@ public class Cancellation {
         this.cancelledAt = cancelledAt;
     }
 
-    /* ================= BUSINESS METHODS ================= */
+    
 
     public boolean isRefunded() {
         return STATUS_REFUNDED.equalsIgnoreCase(status);
@@ -86,7 +86,7 @@ public class Cancellation {
         this.status = STATUS_REFUNDED;
     }
 
-    /* ================= DEBUG ================= */
+    
 
     @Override
     public String toString() {

@@ -10,7 +10,7 @@ import java.util.List;
 
 public class ReviewDAO {
 
-    /* ================= HELPERS ================= */
+    
 
     private String[] buildBusReviewRow(ResultSet rs) throws Exception {
 
@@ -74,7 +74,7 @@ public class ReviewDAO {
         return 0;
     }
 
-    /* ================= ADD REVIEW ================= */
+    
 
     public boolean addReview(int userId, int busId, int rating, String comment) {
 
@@ -101,7 +101,7 @@ public class ReviewDAO {
         return false;
     }
 
-    /* ================= BUS REVIEWS ================= */
+    
 
     public List<String[]> getReviewsByBus(int busId) {
 
@@ -134,7 +134,7 @@ public class ReviewDAO {
         return list;
     }
 
-    /* ================= AVERAGE ================= */
+    
 
     public double getAverageRating(int busId) {
 
@@ -144,7 +144,7 @@ public class ReviewDAO {
         return getDouble(sql, busId);
     }
 
-    /* ================= COUNT ================= */
+    
 
     public int getReviewCount(int busId) {
 
@@ -154,7 +154,7 @@ public class ReviewDAO {
         return getInt(sql, busId);
     }
 
-    /* ================= ALL (ADMIN) ================= */
+    
 
     public List<String[]> getAllReviews() {
 

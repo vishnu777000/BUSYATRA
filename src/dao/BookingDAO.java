@@ -1,68 +1,37 @@
 package dao;
 
 import config.DBConfig;
+import util.SchemaCache;
 
 import java.sql.*;
 import java.time.LocalDate;
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.Comparator;
+import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.HashMap;
+import java.util.StringJoiner;
 
 public class BookingDAO {
 
-    private final Map<String, Boolean> tableCache = new HashMap<>();
-    private final Map<String, Boolean> columnCache = new HashMap<>();
+    private static final Object SCHEMA_LOCK = new Object();
+    private static volatile boolean schemaCompatibilityEnsured = false;
     private final Map<String, Integer> routeStopCache = new HashMap<>();
     private volatile String lastErrorMessage = "";
 
     private boolean tableExists(String tableName) {
-        if (tableCache.containsKey(tableName)) return tableCache.get(tableName);
-
-        String sql =
-                "SELECT 1 FROM information_schema.tables " +
-                "WHERE table_schema = DATABASE() AND table_name = ? LIMIT 1";
-        try (Connection con = DBConfig.getConnection();
-             PreparedStatement ps = con.prepareStatement(sql)) {
-            ps.setString(1, tableName);
-            try (ResultSet rs = ps.executeQuery()) {
-                boolean exists = rs.next();
-                tableCache.put(tableName, exists);
-                return exists;
-            }
-        } catch (Exception e) {
-            tableCache.put(tableName, false);
-            return false;
-        }
+        return SchemaCache.tableExists(tableName);
     }
 
     private boolean columnExists(String tableName, String columnName) {
-        String key = tableName + "." + columnName;
-        if (columnCache.containsKey(key)) return columnCache.get(key);
-
-        String sql =
-                "SELECT 1 FROM information_schema.columns " +
-                "WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ? LIMIT 1";
-        try (Connection con = DBConfig.getConnection();
-             PreparedStatement ps = con.prepareStatement(sql)) {
-            ps.setString(1, tableName);
-            ps.setString(2, columnName);
-            try (ResultSet rs = ps.executeQuery()) {
-                boolean exists = rs.next();
-                columnCache.put(key, exists);
-                return exists;
-            }
-        } catch (Exception e) {
-            columnCache.put(key, false);
-            return false;
-        }
+        return SchemaCache.columnExists(tableName, columnName);
     }
 
     private String firstExistingColumn(String table, String... candidates) {
-        for (String candidate : candidates) {
-            if (columnExists(table, candidate)) return candidate;
-        }
-        return null;
+        return SchemaCache.firstExistingColumn(table, candidates);
     }
 
     private void ensureColumn(String table, String column, String ddlType) {
@@ -71,37 +40,45 @@ public class BookingDAO {
         try (Connection con = DBConfig.getConnection();
              PreparedStatement ps = con.prepareStatement(sql)) {
             ps.executeUpdate();
-            columnCache.put(table + "." + column, true);
+            SchemaCache.markColumnPresent(table, column);
         } catch (Exception ignored) {
-            // best-effort compatibility migration
+            
         }
     }
 
     private void ensureBookingSchemaCompatibility() {
-        if (!tableExists("bookings")) return;
+        if (schemaCompatibilityEnsured) return;
 
-        ensureColumn("bookings", "user_id", "INT NULL");
-        ensureColumn("bookings", "schedule_id", "INT NULL");
-        ensureColumn("bookings", "route_id", "INT NULL");
-        ensureColumn("bookings", "from_city", "VARCHAR(120) NULL");
-        ensureColumn("bookings", "to_city", "VARCHAR(120) NULL");
-        ensureColumn("bookings", "from_order", "INT NULL");
-        ensureColumn("bookings", "to_order", "INT NULL");
-        ensureColumn("bookings", "seat_no", "VARCHAR(24) NULL");
-        ensureColumn("bookings", "journey_date", "DATE NULL");
-        ensureColumn("bookings", "amount", "DECIMAL(12,2) NULL");
-        ensureColumn("bookings", "passenger_name", "VARCHAR(120) NULL");
-        ensureColumn("bookings", "passenger_phone", "VARCHAR(20) NULL");
-        ensureColumn("bookings", "passenger_email", "VARCHAR(160) NULL");
-        ensureColumn("bookings", "status", "VARCHAR(24) NULL");
-        ensureColumn("bookings", "created_at", "TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP");
+        synchronized (SCHEMA_LOCK) {
+            if (schemaCompatibilityEnsured) return;
+            if (!tableExists("bookings")) return;
 
-        if (tableExists("booked_seats")) {
-            ensureColumn("booked_seats", "booking_id", "INT NULL");
-            ensureColumn("booked_seats", "schedule_id", "INT NULL");
-            ensureColumn("booked_seats", "seat_no", "VARCHAR(24) NULL");
-            ensureColumn("booked_seats", "from_order", "INT NULL");
-            ensureColumn("booked_seats", "to_order", "INT NULL");
+            ensureColumn("bookings", "user_id", "INT NULL");
+            ensureColumn("bookings", "schedule_id", "INT NULL");
+            ensureColumn("bookings", "route_id", "INT NULL");
+            ensureColumn("bookings", "from_city", "VARCHAR(120) NULL");
+            ensureColumn("bookings", "to_city", "VARCHAR(120) NULL");
+            ensureColumn("bookings", "from_order", "INT NULL");
+            ensureColumn("bookings", "to_order", "INT NULL");
+            ensureColumn("bookings", "seat_no", "VARCHAR(24) NULL");
+            ensureColumn("bookings", "journey_date", "DATE NULL");
+            ensureColumn("bookings", "amount", "DECIMAL(12,2) NULL");
+            ensureColumn("bookings", "passenger_name", "VARCHAR(120) NULL");
+            ensureColumn("bookings", "passenger_phone", "VARCHAR(20) NULL");
+            ensureColumn("bookings", "passenger_email", "VARCHAR(160) NULL");
+            ensureColumn("bookings", "booking_ref", "VARCHAR(80) NULL");
+            ensureColumn("bookings", "status", "VARCHAR(24) NULL");
+            ensureColumn("bookings", "created_at", "TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP");
+
+            if (tableExists("booked_seats")) {
+                ensureColumn("booked_seats", "booking_id", "INT NULL");
+                ensureColumn("booked_seats", "schedule_id", "INT NULL");
+                ensureColumn("booked_seats", "seat_no", "VARCHAR(24) NULL");
+                ensureColumn("booked_seats", "from_order", "INT NULL");
+                ensureColumn("booked_seats", "to_order", "INT NULL");
+            }
+
+            schemaCompatibilityEnsured = true;
         }
     }
 
@@ -155,7 +132,7 @@ public class BookingDAO {
                 }
             }
         } catch (Exception ignored) {
-            // no-op, best-effort mapping
+            
         }
         routeStopCache.put(cacheKey, null);
         return null;
@@ -232,7 +209,7 @@ public class BookingDAO {
         return false;
     }
 
-    /* ================= HELPER ================= */
+    
 
     private String[] buildBookingRow(ResultSet rs) throws SQLException {
 
@@ -247,7 +224,108 @@ public class BookingDAO {
         };
     }
 
-    /* ================= UPCOMING ================= */
+    private static class BookingHistoryEntry {
+        private int id;
+        private int scheduleId;
+        private String bookingRef = "";
+        private String createdValue = "";
+        private String src = "";
+        private String dst = "";
+        private String seatValue = "";
+        private double amount;
+        private String journeyDate = "";
+        private String status = "CONFIRMED";
+    }
+
+    private static class BookingHistoryGroup {
+        private final List<Integer> bookingIds = new ArrayList<>();
+        private final List<String> seatValues = new ArrayList<>();
+        private String displayRef = "";
+        private String src = "";
+        private String dst = "";
+        private String journeyDate = "";
+        private String status = "CONFIRMED";
+        private double totalAmount;
+    }
+
+    private BookingHistoryEntry readHistoryEntry(ResultSet rs) throws SQLException {
+        BookingHistoryEntry entry = new BookingHistoryEntry();
+        entry.id = rs.getInt("id");
+        entry.scheduleId = rs.getInt("schedule_value");
+        entry.bookingRef = safeText(rs.getString("booking_ref_value"));
+        entry.createdValue = safeText(rs.getString("created_value"));
+        entry.src = safeText(rs.getString("src"));
+        entry.dst = safeText(rs.getString("dst"));
+        entry.seatValue = safeText(rs.getString("seat_value"));
+        entry.amount = rs.getDouble("amount_value");
+        entry.journeyDate = safeText(rs.getString("jdate"));
+        String rawStatus = safeText(rs.getString("status"));
+        entry.status = rawStatus.isBlank() ? "CONFIRMED" : rawStatus.toUpperCase(Locale.ENGLISH);
+        return entry;
+    }
+
+    private String bookingHistoryGroupKey(BookingHistoryEntry entry) {
+        if (!entry.bookingRef.isBlank()) {
+            return "REF|" + entry.bookingRef + "|" + entry.status;
+        }
+        if (!entry.createdValue.isBlank()) {
+            return "LEGACY|" +
+                    entry.scheduleId + "|" +
+                    entry.src.toUpperCase(Locale.ENGLISH) + "|" +
+                    entry.dst.toUpperCase(Locale.ENGLISH) + "|" +
+                    entry.journeyDate + "|" +
+                    entry.status + "|" +
+                    entry.createdValue;
+        }
+        return "ROW|" + entry.id;
+    }
+
+    private void appendHistoryEntry(BookingHistoryGroup group, BookingHistoryEntry entry) {
+        group.bookingIds.add(entry.id);
+        if (!entry.seatValue.isBlank()) {
+            group.seatValues.add(entry.seatValue);
+        }
+        if (group.displayRef.isBlank()) {
+            group.displayRef = !entry.bookingRef.isBlank() ? entry.bookingRef : String.valueOf(entry.id);
+        }
+        if (group.src.isBlank()) group.src = entry.src;
+        if (group.dst.isBlank()) group.dst = entry.dst;
+        if (group.journeyDate.isBlank()) group.journeyDate = entry.journeyDate;
+        if (group.status.isBlank()) group.status = entry.status;
+        group.totalAmount += entry.amount;
+    }
+
+    private String[] toHistoryRow(BookingHistoryGroup group) {
+        group.seatValues.sort(Comparator.comparingInt(this::seatSortKey).thenComparing(String::compareToIgnoreCase));
+        StringJoiner idJoiner = new StringJoiner(",");
+        for (Integer id : group.bookingIds) {
+            idJoiner.add(String.valueOf(id));
+        }
+
+        String displayRef;
+        if (group.bookingIds.size() > 1) {
+            displayRef = group.bookingIds.get(0) + "-" + group.bookingIds.get(group.bookingIds.size() - 1);
+        } else if (!group.bookingIds.isEmpty()) {
+            displayRef = String.valueOf(group.bookingIds.get(0));
+        } else if (group.displayRef != null && !group.displayRef.isBlank()) {
+            displayRef = group.displayRef;
+        } else {
+            displayRef = "-";
+        }
+
+        return new String[]{
+                displayRef,
+                group.src,
+                group.dst,
+                String.join(", ", group.seatValues),
+                String.format(Locale.ENGLISH, "%.2f", group.totalAmount),
+                group.journeyDate,
+                group.status,
+                idJoiner.toString()
+        };
+    }
+
+    
 
     public String getUpcomingBookingText(int userId) {
 
@@ -292,13 +370,13 @@ public class BookingDAO {
             }
 
         } catch (Exception e) {
-            // no-op: dashboard should still load
+            
         }
 
         return "No active booking";
     }
 
-    /* ================= USER BOOKINGS ================= */
+    
 
     public List<String[]> getBookingsByUser(int userId) {
 
@@ -320,6 +398,9 @@ public class BookingDAO {
         String seatCol = firstExistingColumn("bookings", "seat_no", "seat_number", "seat");
         String statusCol = firstExistingColumn("bookings", "status");
         String amountCol = firstExistingColumn("bookings", "amount", "total_amount", "fare", "price", "ticket_amount");
+        String bookingRefCol = firstExistingColumn("bookings", "booking_ref", "order_ref", "order_id", "booking_code");
+        String scheduleCol = firstExistingColumn("bookings", "schedule_id", "schedule", "scheduleid", "sid", "trip_id", "tripid");
+        String createdCol = firstExistingColumn("bookings", "created_at", "booking_time");
 
         if (fromCol == null || toCol == null || dateCol == null || seatCol == null || userCol == null) {
             return list;
@@ -329,25 +410,73 @@ public class BookingDAO {
         String sql =
                 "SELECT id," + fromCol + " AS src," + toCol + " AS dst," +
                 seatCol + " AS seat_value," + amountExpr + " AS amount_value," + dateCol + " AS jdate," +
-                (statusCol != null ? statusCol : "'CONFIRMED'") + " AS status " +
-                "FROM bookings WHERE " + userCol + "=? ORDER BY " + dateCol + " DESC";
+                (statusCol != null ? statusCol : "'CONFIRMED'") + " AS status," +
+                (bookingRefCol != null ? bookingRefCol : "''") + " AS booking_ref_value," +
+                (scheduleCol != null ? scheduleCol : "0") + " AS schedule_value," +
+                (createdCol != null ? createdCol : "NULL") + " AS created_value " +
+                "FROM bookings WHERE " + userCol + "=? ORDER BY " + (createdCol != null ? createdCol : dateCol) + " DESC, id DESC";
 
         try (Connection con = DBConfig.getConnection();
              PreparedStatement ps = con.prepareStatement(sql)) {
 
             ps.setInt(1, userId);
 
-            ResultSet rs = ps.executeQuery();
+            try (ResultSet rs = ps.executeQuery()) {
+                Map<String, BookingHistoryGroup> groups = new LinkedHashMap<>();
+                while (rs.next()) {
+                    BookingHistoryEntry entry = readHistoryEntry(rs);
+                    String groupKey = bookingHistoryGroupKey(entry);
+                    BookingHistoryGroup group = groups.computeIfAbsent(groupKey, key -> new BookingHistoryGroup());
+                    appendHistoryEntry(group, entry);
+                }
 
-            while (rs.next()) {
-                list.add(buildBookingRow(rs));
+                for (BookingHistoryGroup group : groups.values()) {
+                    list.add(toHistoryRow(group));
+                }
             }
 
         } catch (Exception e) {
-            // no-op
+            
         }
 
         return list;
+    }
+
+    public int countBookingsByUser(int userId) {
+        if (userId <= 0 || !tableExists("bookings")) {
+            return 0;
+        }
+
+        String userCol = firstExistingColumn("bookings", "user_id", "uid");
+        String bookingRefCol = firstExistingColumn("bookings", "booking_ref", "order_ref", "order_id", "booking_code");
+        if (userCol == null) {
+            return 0;
+        }
+
+        String sql;
+        if (bookingRefCol != null) {
+            sql =
+                    "SELECT COUNT(*) FROM (" +
+                    "SELECT CASE " +
+                    "WHEN " + bookingRefCol + " IS NOT NULL AND TRIM(" + bookingRefCol + ") <> '' " +
+                    "THEN CONCAT('REF|', TRIM(" + bookingRefCol + ")) " +
+                    "ELSE CONCAT('ID|', id) END AS booking_key " +
+                    "FROM bookings WHERE " + userCol + "=? " +
+                    "GROUP BY booking_key" +
+                    ") grouped_bookings";
+        } else {
+            sql = "SELECT COUNT(*) FROM bookings WHERE " + userCol + "=?";
+        }
+
+        try (Connection con = DBConfig.getConnection();
+             PreparedStatement ps = con.prepareStatement(sql)) {
+            ps.setInt(1, userId);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? rs.getInt(1) : 0;
+            }
+        } catch (Exception e) {
+            return 0;
+        }
     }
 
     public boolean deleteBookingHistoryForUser(int bookingId, int userId) {
@@ -357,7 +486,7 @@ public class BookingDAO {
         String statusCol = firstExistingColumn("bookings", "status", "booking_status", "state");
         if (userCol == null) return false;
 
-        // Avoid deleting active confirmed ticket from history directly.
+        
         String sql = "DELETE FROM bookings WHERE id=? AND " + userCol + "=?" +
                 (statusCol != null ? " AND UPPER(" + statusCol + ") <> 'CONFIRMED'" : "");
         try (Connection con = DBConfig.getConnection();
@@ -370,7 +499,48 @@ public class BookingDAO {
         }
     }
 
-    /* ================= SEAT CHECK ================= */
+    private List<Integer> normalizeBookingIds(Collection<Integer> bookingIds) {
+        List<Integer> normalized = new ArrayList<>();
+        if (bookingIds == null) return normalized;
+        for (Integer bookingId : bookingIds) {
+            if (bookingId != null && bookingId > 0 && !normalized.contains(bookingId)) {
+                normalized.add(bookingId);
+            }
+        }
+        return normalized;
+    }
+
+    public boolean deleteBookingHistoryForUser(Collection<Integer> bookingIds, int userId) {
+        List<Integer> normalized = normalizeBookingIds(bookingIds);
+        if (normalized.isEmpty() || userId <= 0 || !tableExists("bookings")) return false;
+
+        String userCol = firstExistingColumn("bookings", "user_id", "uid", "user", "userid", "customer_id");
+        String statusCol = firstExistingColumn("bookings", "status", "booking_status", "state");
+        if (userCol == null) return false;
+
+        StringBuilder sql = new StringBuilder("DELETE FROM bookings WHERE " + userCol + "=? AND id IN (");
+        for (int i = 0; i < normalized.size(); i++) {
+            if (i > 0) sql.append(",");
+            sql.append("?");
+        }
+        sql.append(")");
+        if (statusCol != null) {
+            sql.append(" AND UPPER(").append(statusCol).append(") <> 'CONFIRMED'");
+        }
+
+        try (Connection con = DBConfig.getConnection();
+             PreparedStatement ps = con.prepareStatement(sql.toString())) {
+            ps.setInt(1, userId);
+            for (int i = 0; i < normalized.size(); i++) {
+                ps.setInt(i + 2, normalized.get(i));
+            }
+            return ps.executeUpdate() == normalized.size();
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    
 
     public boolean isSeatAvailable(int scheduleId,
                                    String seatNo,
@@ -418,7 +588,7 @@ public class BookingDAO {
         return !hasSeatConflictInBookings(scheduleId, seatNo, newFrom, newTo);
     }
 
-    /* ================= INSERT BOOKING ================= */
+    
 
     public int insertBooking(
             int userId,
@@ -434,6 +604,39 @@ public class BookingDAO {
             String passengerName,
             String passengerPhone,
             String passengerEmail) {
+        return insertBooking(
+                userId,
+                routeId,
+                scheduleId,
+                fromCity,
+                toCity,
+                fromOrder,
+                toOrder,
+                seatNo,
+                amount,
+                journeyDate,
+                passengerName,
+                passengerPhone,
+                passengerEmail,
+                null
+        );
+    }
+
+    public int insertBooking(
+            int userId,
+            int routeId,
+            int scheduleId,
+            String fromCity,
+            String toCity,
+            int fromOrder,
+            int toOrder,
+            String seatNo,
+            double amount,
+            String journeyDate,
+            String passengerName,
+            String passengerPhone,
+            String passengerEmail,
+            String bookingRef) {
 
         lastErrorMessage = "";
         ensureBookingSchemaCompatibility();
@@ -456,9 +659,11 @@ public class BookingDAO {
         String passengerNameCol = firstExistingColumn("bookings", "passenger_name", "pname", "customer_name");
         String passengerPhoneCol = firstExistingColumn("bookings", "passenger_phone", "phone", "mobile", "contact_no");
         String passengerEmailCol = firstExistingColumn("bookings", "passenger_email", "email", "mail");
+        String bookingRefCol = firstExistingColumn("bookings", "booking_ref", "order_ref", "order_id", "booking_code");
 
         Integer fromStopId = resolveRouteStopId(scheduleId, fromCity);
         Integer toStopId = resolveRouteStopId(scheduleId, toCity);
+        String normalizedBookingRef = safeText(bookingRef);
 
         List<String> columns = new ArrayList<>();
         List<Object> values = new ArrayList<>();
@@ -477,6 +682,7 @@ public class BookingDAO {
         addColumn(columns, values, passengerNameCol, passengerName);
         addColumn(columns, values, passengerPhoneCol, passengerPhone);
         addColumn(columns, values, passengerEmailCol, passengerEmail);
+        addColumn(columns, values, bookingRefCol, normalizedBookingRef.isBlank() ? null : normalizedBookingRef);
         if (dateCol != null) {
             columns.add(dateCol);
             values.add(toSqlDate(journeyDate));
@@ -496,7 +702,7 @@ public class BookingDAO {
             return -1;
         }
 
-        // Prevent duplicate booking row for the same user/schedule/seat/date
+        
         StringBuilder checkSql = new StringBuilder("SELECT id FROM bookings WHERE " + userCol + "=?");
         List<Object> checkVals = new ArrayList<>();
         checkVals.add(userId);
@@ -531,7 +737,7 @@ public class BookingDAO {
                 }
             }
         } catch (Exception ignored) {
-            // best-effort duplicate prevention
+            
         }
 
         StringBuilder sql = new StringBuilder("INSERT INTO bookings (");
@@ -564,7 +770,7 @@ public class BookingDAO {
 
                     int bookingId = rs.getInt(1);
 
-                    // Insert into booked_seats
+                    
                     insertBookedSeat(bookingId, scheduleId, seatNo, fromOrder, toOrder);
 
                     return bookingId;
@@ -579,7 +785,7 @@ public class BookingDAO {
         return -1;
     }
 
-    /* ================= INSERT BOOKED SEAT ================= */
+    
 
     public void insertBookedSeat(int bookingId,
                                  int scheduleId,
@@ -633,7 +839,7 @@ public class BookingDAO {
         }
     }
 
-    /* ================= CANCEL ================= */
+    
 
     public boolean cancelBooking(int bookingId) {
 
@@ -698,7 +904,73 @@ public class BookingDAO {
         }
     }
 
-    /* ================= AMOUNT ================= */
+    public boolean cancelBookings(Collection<Integer> bookingIds) {
+        List<Integer> normalized = normalizeBookingIds(bookingIds);
+        if (normalized.isEmpty()) return false;
+
+        lastErrorMessage = "";
+        if (!tableExists("bookings")) {
+            lastErrorMessage = "bookings table not found";
+            return false;
+        }
+
+        String statusCol = firstExistingColumn("bookings", "status", "booking_status");
+        String flagCol = firstExistingColumn("bookings", "is_cancelled", "cancelled");
+        String cancelledAtCol = firstExistingColumn("bookings", "cancelled_at");
+
+        String cancelSql;
+        if (statusCol != null) {
+            cancelSql = "UPDATE bookings SET " + statusCol + "='CANCELLED' WHERE id=?";
+        } else if (flagCol != null) {
+            cancelSql = "UPDATE bookings SET " + flagCol + "=1 WHERE id=?";
+        } else if (cancelledAtCol != null) {
+            cancelSql = "UPDATE bookings SET " + cancelledAtCol + "=NOW() WHERE id=?";
+        } else {
+            lastErrorMessage = "No cancellation column available in bookings table";
+            return false;
+        }
+
+        boolean canReleaseBookedSeats = tableExists("booked_seats") && columnExists("booked_seats", "booking_id");
+        String releaseSql = "DELETE FROM booked_seats WHERE booking_id=?";
+
+        try (Connection con = DBConfig.getConnection()) {
+            con.setAutoCommit(false);
+
+            try (PreparedStatement psCancel = con.prepareStatement(cancelSql);
+                 PreparedStatement psRelease = canReleaseBookedSeats ? con.prepareStatement(releaseSql) : null) {
+
+                for (Integer bookingId : normalized) {
+                    psCancel.setInt(1, bookingId);
+                    int updated = psCancel.executeUpdate();
+                    if (updated <= 0) {
+                        con.rollback();
+                        lastErrorMessage = "Booking not found for cancellation";
+                        return false;
+                    }
+
+                    if (psRelease != null) {
+                        psRelease.setInt(1, bookingId);
+                        psRelease.executeUpdate();
+                    }
+                }
+
+                con.commit();
+                return true;
+            } catch (Exception ex) {
+                con.rollback();
+                lastErrorMessage = ex.getMessage();
+                throw ex;
+            } finally {
+                con.setAutoCommit(true);
+            }
+        } catch (Exception e) {
+            lastErrorMessage = e.getMessage();
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    
 
     public double getBookingAmount(int bookingId) {
 
@@ -726,7 +998,43 @@ public class BookingDAO {
         return 0;
     }
 
-    /* ================= TICKET PREVIEW ================= */
+    public double getBookingAmount(Collection<Integer> bookingIds) {
+        List<Integer> normalized = normalizeBookingIds(bookingIds);
+        if (normalized.isEmpty()) return 0;
+
+        String amountCol = firstExistingColumn("bookings", "amount", "total_amount", "fare", "price", "ticket_amount");
+        if (amountCol == null) return 0;
+
+        StringBuilder sql = new StringBuilder(
+                "SELECT IFNULL(SUM(" + amountCol + "),0) AS amount_value FROM bookings WHERE id IN ("
+        );
+        for (int i = 0; i < normalized.size(); i++) {
+            if (i > 0) sql.append(",");
+            sql.append("?");
+        }
+        sql.append(")");
+
+        try (Connection con = DBConfig.getConnection();
+             PreparedStatement ps = con.prepareStatement(sql.toString())) {
+
+            for (int i = 0; i < normalized.size(); i++) {
+                ps.setInt(i + 1, normalized.get(i));
+            }
+
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getDouble("amount_value");
+                }
+            }
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        return 0;
+    }
+
+    
 
     public int getLatestConfirmedBookingId(int userId) {
         if (userId <= 0 || !tableExists("bookings")) return -1;
@@ -749,7 +1057,7 @@ public class BookingDAO {
                 if (rs.next()) return rs.getInt("id");
             }
         } catch (Exception ignored) {
-            // no-op
+            
         }
         return -1;
     }
@@ -770,7 +1078,7 @@ public class BookingDAO {
                 if (rs.next()) return rs.getInt("id");
             }
         } catch (Exception ignored) {
-            // no-op
+            
         }
         return -1;
     }
@@ -788,7 +1096,7 @@ public class BookingDAO {
                 }
             }
         } catch (Exception ignored) {
-            // best-effort lookup
+            
         }
         return "";
     }
@@ -822,7 +1130,7 @@ public class BookingDAO {
                 if (rs.next()) return rs.getString("route_name");
             }
         } catch (Exception ignored) {
-            // best-effort lookup
+            
         }
         return "";
     }
@@ -831,6 +1139,91 @@ public class BookingDAO {
         if (scheduleId <= 0) return "";
         String departureCol = firstExistingColumn("schedules", "departure_time", "start_time", "depart_at");
         return getById("schedules", "id", departureCol, scheduleId);
+    }
+
+    private String safeText(String value) {
+        return value == null ? "" : value.trim();
+    }
+
+    private double parseAmount(String raw) {
+        try {
+            return Double.parseDouble(safeText(raw));
+        } catch (Exception ignored) {
+            return 0;
+        }
+    }
+
+    private int seatSortKey(String seatNo) {
+        try {
+            return Integer.parseInt(safeText(seatNo).replaceAll("\\D", ""));
+        } catch (Exception ignored) {
+            return Integer.MAX_VALUE;
+        }
+    }
+
+    public String[] getCombinedTicketPreviewData(List<Integer> bookingIds) {
+        if (bookingIds == null || bookingIds.isEmpty()) return null;
+
+        List<Integer> normalizedIds = new ArrayList<>();
+        List<String> seatValues = new ArrayList<>();
+        String passenger = "";
+        String routeName = "";
+        String src = "";
+        String dst = "";
+        String journeyDate = "";
+        String departure = "";
+        String phone = "";
+        String email = "";
+        double totalAmount = 0;
+
+        for (Integer bookingId : bookingIds) {
+            if (bookingId == null || bookingId <= 0) continue;
+
+            String[] row = getTicketPreviewData(bookingId);
+            if (row == null || row.length < 11) continue;
+
+            normalizedIds.add(bookingId);
+
+            if (passenger.isBlank()) passenger = safeText(row[1]);
+            if (routeName.isBlank()) routeName = safeText(row[2]);
+            if (src.isBlank()) src = safeText(row[3]);
+            if (dst.isBlank()) dst = safeText(row[4]);
+            if (journeyDate.isBlank()) journeyDate = safeText(row[7]);
+            if (departure.isBlank()) departure = safeText(row[8]);
+            if (phone.isBlank()) phone = safeText(row[9]);
+            if (email.isBlank()) email = safeText(row[10]);
+
+            String seatValue = safeText(row[5]);
+            if (!seatValue.isBlank()) {
+                seatValues.add(seatValue);
+            }
+
+            totalAmount += parseAmount(row[6]);
+        }
+
+        if (normalizedIds.isEmpty()) return null;
+
+        seatValues.sort(Comparator.comparingInt(this::seatSortKey).thenComparing(String::compareToIgnoreCase));
+
+        int firstId = normalizedIds.get(0);
+        int lastId = normalizedIds.get(normalizedIds.size() - 1);
+        String ticketRef = normalizedIds.size() == 1
+                ? String.valueOf(firstId)
+                : firstId + "-" + lastId;
+
+        return new String[]{
+                ticketRef,
+                passenger,
+                routeName,
+                src,
+                dst,
+                String.join(", ", seatValues),
+                String.format(Locale.ENGLISH, "%.2f", totalAmount),
+                journeyDate,
+                departure,
+                phone,
+                email
+        };
     }
 
     public String[] getTicketPreviewData(int bookingId) {

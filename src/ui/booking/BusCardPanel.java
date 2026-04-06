@@ -25,7 +25,7 @@ public BusCardPanel(
 
     UIConfig.styleCard(this);
 
-    /* ================= LEFT ================= */
+    
 
     JPanel left = new JPanel();
     left.setOpaque(false);
@@ -42,7 +42,7 @@ public BusCardPanel(
     left.add(Box.createVerticalStrut(5));
     left.add(routeLbl);
 
-    /* ================= CENTER ================= */
+    
 
     JPanel center = new JPanel(new GridLayout(2,1));
     center.setOpaque(false);
@@ -57,7 +57,7 @@ public BusCardPanel(
     center.add(time);
     center.add(seatsLbl);
 
-    /* ================= RIGHT ================= */
+    
 
     JPanel right = new JPanel();
     right.setOpaque(false);
@@ -82,7 +82,7 @@ public BusCardPanel(
     right.add(Box.createVerticalStrut(10));
     right.add(selectBtn);
 
-    /* ================= ADD ================= */
+    
 
     add(left,BorderLayout.WEST);
     add(center,BorderLayout.CENTER);

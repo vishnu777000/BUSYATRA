@@ -5,21 +5,21 @@ import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 
-/**
- * AnimationUtil
- * ---------------------------------------
- * Lightweight UI interaction helpers
- * (SAFE for Swing, NO custom painting)
- */
+
+
+
+
+
+
 public final class AnimationUtil {
 
     private AnimationUtil() {
-        // utility class
+        
     }
 
-    /* =================================================
-       BUTTON HOVER EFFECT
-       ================================================= */
+    
+
+
     public static void addButtonHover(
             JButton btn,
             Color normalBg,
@@ -42,9 +42,9 @@ public final class AnimationUtil {
         });
     }
 
-    /* =================================================
-       CARD HOVER EFFECT (Dashboard / Panels)
-       ================================================= */
+    
+
+
     public static void addCardHover(
             JComponent card,
             Color normalBg,
@@ -67,9 +67,9 @@ public final class AnimationUtil {
         });
     }
 
-    /* =================================================
-       LOADING CURSOR HELPERS
-       ================================================= */
+    
+
+
     public static void showLoading(Component c) {
         c.setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
     }
@@ -78,9 +78,9 @@ public final class AnimationUtil {
         c.setCursor(Cursor.getDefaultCursor());
     }
 
-    /* =================================================
-       DELAYED ACTION (UX POLISH)
-       ================================================= */
+    
+
+
     public static void delay(int ms, Runnable action) {
         Timer t = new Timer(ms, e -> action.run());
         t.setRepeats(false);

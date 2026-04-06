@@ -16,7 +16,7 @@ public class Ticket {
 
     private LocalDateTime bookingTime;
 
-    /* ================= EXTRA DISPLAY FIELDS ================= */
+    
 
     private String routeName;
     private String operator;
@@ -25,11 +25,11 @@ public class Ticket {
     private String departureTime;
     private String arrivalTime;
 
-    // Status constants
+    
     public static final String STATUS_BOOKED = "BOOKED";
     public static final String STATUS_CANCELLED = "CANCELLED";
 
-    /* ================= CONSTRUCTORS ================= */
+    
 
     public Ticket() {}
 
@@ -52,7 +52,7 @@ public class Ticket {
         this.bookingTime = LocalDateTime.now();
     }
 
-    /* ================= GETTERS & SETTERS ================= */
+    
 
     public int getId() { return id; }
     public void setId(int id) { this.id = id; }
@@ -120,13 +120,13 @@ public class Ticket {
         this.arrivalTime = arrivalTime;
     }
 
-    /* ================= HELPER ================= */
+    
 
     public String getFormattedSeats() {
         return seats != null ? seats.replace(",", ", ") : "";
     }
 
-    /* ================= BUSINESS METHODS ================= */
+    
 
     public boolean isBooked() {
         return STATUS_BOOKED.equalsIgnoreCase(status);
@@ -140,7 +140,7 @@ public class Ticket {
         this.status = STATUS_CANCELLED;
     }
 
-    /* ================= DEBUG ================= */
+    
 
     @Override
     public String toString() {

@@ -1,94 +1,111 @@
 package dao;
 
 import util.DBConnectionUtil;
+import util.SchemaCache;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
-import java.util.HashMap;
-import java.util.Map;
 
 public class AdminStatsDAO {
 
-    private final Map<String, Boolean> tableCache = new HashMap<>();
-    private final Map<String, Boolean> columnCache = new HashMap<>();
-
     private boolean tableExists(String table) {
-        if (tableCache.containsKey(table)) {
-            return tableCache.get(table);
-        }
-        String sql = "SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ? LIMIT 1";
-        try (Connection con = DBConnectionUtil.getConnection();
-             PreparedStatement ps = con.prepareStatement(sql)) {
-            ps.setString(1, table);
-            try (ResultSet rs = ps.executeQuery()) {
-                boolean exists = rs.next();
-                tableCache.put(table, exists);
-                return exists;
-            }
-        } catch (Exception e) {
-            tableCache.put(table, false);
-            return false;
-        }
+        return SchemaCache.tableExists(table);
     }
 
     private boolean columnExists(String table, String column) {
-        String key = table + "." + column;
-        if (columnCache.containsKey(key)) {
-            return columnCache.get(key);
-        }
-        String sql = "SELECT 1 FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ? LIMIT 1";
-        try (Connection con = DBConnectionUtil.getConnection();
-             PreparedStatement ps = con.prepareStatement(sql)) {
-            ps.setString(1, table);
-            ps.setString(2, column);
-            try (ResultSet rs = ps.executeQuery()) {
-                boolean exists = rs.next();
-                columnCache.put(key, exists);
-                return exists;
-            }
-        } catch (Exception e) {
-            columnCache.put(key, false);
-            return false;
-        }
+        return SchemaCache.columnExists(table, column);
     }
 
     private int getInt(String sql) {
-
-        try (
-                Connection con = DBConnectionUtil.getConnection();
-                PreparedStatement ps = con.prepareStatement(sql);
-                ResultSet rs = ps.executeQuery()
-        ) {
-
-            if (rs.next()) {
-                return rs.getInt(1);
-            }
-
+        try (Connection con = DBConnectionUtil.getConnection();
+             PreparedStatement ps = con.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+            return rs.next() ? rs.getInt(1) : 0;
         } catch (Exception e) {
-            e.printStackTrace();
+            return 0;
         }
-
-        return 0;
     }
 
     private double getDouble(String sql) {
-
-        try (
-                Connection con = DBConnectionUtil.getConnection();
-                PreparedStatement ps = con.prepareStatement(sql);
-                ResultSet rs = ps.executeQuery()
-        ) {
-
-            if (rs.next()) {
-                return rs.getDouble(1);
-            }
-
+        try (Connection con = DBConnectionUtil.getConnection();
+             PreparedStatement ps = con.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+            return rs.next() ? rs.getDouble(1) : 0;
         } catch (Exception e) {
-            e.printStackTrace();
+            return 0;
+        }
+    }
+
+    private int getInt(Connection con, String sql) {
+        try (PreparedStatement ps = con.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+            return rs.next() ? rs.getInt(1) : 0;
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    private double getDouble(Connection con, String sql) {
+        try (PreparedStatement ps = con.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+            return rs.next() ? rs.getDouble(1) : 0;
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    public StatsSnapshot getDashboardSnapshot() {
+        StatsSnapshot snapshot = new StatsSnapshot();
+
+        String bookingsAmountCol = columnExists("bookings", "total_amount") ? "total_amount"
+                : (columnExists("bookings", "amount") ? "amount" : null);
+        String bookingsTimeCol = columnExists("bookings", "booking_time") ? "booking_time"
+                : (columnExists("bookings", "created_at") ? "created_at" : null);
+        boolean bookingStatusSupported = columnExists("bookings", "status");
+
+        try (Connection con = DBConnectionUtil.getConnection()) {
+            if (tableExists("users")) {
+                snapshot.users = getInt(con, "SELECT COUNT(*) FROM users");
+            }
+            if (tableExists("buses")) {
+                snapshot.buses = getInt(con, "SELECT COUNT(*) FROM buses");
+            }
+            if (tableExists("routes")) {
+                snapshot.routes = getInt(con, "SELECT COUNT(*) FROM routes");
+            }
+            if (tableExists("schedules")) {
+                snapshot.schedules = getInt(con, "SELECT COUNT(*) FROM schedules");
+            }
+            if (tableExists("tickets")) {
+                snapshot.tickets = getInt(con, "SELECT COUNT(*) FROM tickets");
+            } else if (tableExists("bookings")) {
+                snapshot.tickets = getInt(con, "SELECT COUNT(*) FROM bookings");
+            }
+            if (tableExists("bookings") && bookingStatusSupported) {
+                snapshot.cancelled = getInt(con, "SELECT COUNT(*) FROM bookings WHERE status='CANCELLED'");
+            }
+            if (tableExists("bookings") && bookingsAmountCol != null) {
+                String revenueSql = "SELECT IFNULL(SUM(" + bookingsAmountCol + "),0) FROM bookings" +
+                        (bookingStatusSupported ? " WHERE status='CONFIRMED'" : "");
+                snapshot.revenue = getDouble(con, revenueSql);
+            }
+            if (tableExists("bookings") && bookingsTimeCol != null) {
+                snapshot.todayBookings = getInt(con,
+                        "SELECT COUNT(*) FROM bookings WHERE DATE(" + bookingsTimeCol + ")=CURDATE()");
+                if (bookingsAmountCol != null) {
+                    String todayRevenueSql =
+                            "SELECT IFNULL(SUM(" + bookingsAmountCol + "),0) FROM bookings WHERE DATE(" +
+                            bookingsTimeCol + ")=CURDATE()" +
+                            (bookingStatusSupported ? " AND status='CONFIRMED'" : "");
+                    snapshot.todayRevenue = getDouble(con, todayRevenueSql);
+                }
+            }
+        } catch (Exception ignored) {
+
         }
 
-        return 0;
+        return snapshot;
     }
 
     public int getTotalUsers() {
@@ -114,67 +131,55 @@ public class AdminStatsDAO {
     }
 
     public int getCancelledTickets() {
-        if (!tableExists("bookings")) return 0;
-
-        if (columnExists("bookings", "status")) {
-            return getInt("SELECT COUNT(*) FROM bookings WHERE status='CANCELLED'");
-        }
-
-        return 0;
+        if (!tableExists("bookings") || !columnExists("bookings", "status")) return 0;
+        return getInt("SELECT COUNT(*) FROM bookings WHERE status='CANCELLED'");
     }
 
     public int getTodayBookings() {
-
         if (!tableExists("bookings")) return 0;
 
-        String timeCol = columnExists("bookings", "booking_time") ? "booking_time" :
-                (columnExists("bookings", "created_at") ? "created_at" : null);
-
+        String timeCol = columnExists("bookings", "booking_time") ? "booking_time"
+                : (columnExists("bookings", "created_at") ? "created_at" : null);
         if (timeCol == null) return 0;
 
-        String sql =
-                "SELECT COUNT(*) FROM bookings WHERE DATE(" + timeCol + ")=CURDATE()";
-
-        return getInt(sql);
+        return getInt("SELECT COUNT(*) FROM bookings WHERE DATE(" + timeCol + ")=CURDATE()");
     }
 
     public double getTotalRevenue() {
-
         if (!tableExists("bookings")) return 0;
 
-        String amountCol = columnExists("bookings", "total_amount") ? "total_amount" :
-                (columnExists("bookings", "amount") ? "amount" : null);
-
+        String amountCol = columnExists("bookings", "total_amount") ? "total_amount"
+                : (columnExists("bookings", "amount") ? "amount" : null);
         if (amountCol == null) return 0;
 
-        String sql;
-        if (columnExists("bookings", "status")) {
-            sql = "SELECT IFNULL(SUM(" + amountCol + "),0) FROM bookings WHERE status='CONFIRMED'";
-        } else {
-            sql = "SELECT IFNULL(SUM(" + amountCol + "),0) FROM bookings";
-        }
-
+        String sql = "SELECT IFNULL(SUM(" + amountCol + "),0) FROM bookings" +
+                (columnExists("bookings", "status") ? " WHERE status='CONFIRMED'" : "");
         return getDouble(sql);
     }
 
     public double getTodayRevenue() {
-
         if (!tableExists("bookings")) return 0;
 
-        String amountCol = columnExists("bookings", "total_amount") ? "total_amount" :
-                (columnExists("bookings", "amount") ? "amount" : null);
-        String timeCol = columnExists("bookings", "booking_time") ? "booking_time" :
-                (columnExists("bookings", "created_at") ? "created_at" : null);
-
+        String amountCol = columnExists("bookings", "total_amount") ? "total_amount"
+                : (columnExists("bookings", "amount") ? "amount" : null);
+        String timeCol = columnExists("bookings", "booking_time") ? "booking_time"
+                : (columnExists("bookings", "created_at") ? "created_at" : null);
         if (amountCol == null || timeCol == null) return 0;
 
-        String sql;
-        if (columnExists("bookings", "status")) {
-            sql = "SELECT IFNULL(SUM(" + amountCol + "),0) FROM bookings WHERE status='CONFIRMED' AND DATE(" + timeCol + ")=CURDATE()";
-        } else {
-            sql = "SELECT IFNULL(SUM(" + amountCol + "),0) FROM bookings WHERE DATE(" + timeCol + ")=CURDATE()";
-        }
-
+        String sql = "SELECT IFNULL(SUM(" + amountCol + "),0) FROM bookings WHERE DATE(" + timeCol + ")=CURDATE()" +
+                (columnExists("bookings", "status") ? " AND status='CONFIRMED'" : "");
         return getDouble(sql);
+    }
+
+    public static class StatsSnapshot {
+        public int users;
+        public int buses;
+        public int routes;
+        public int schedules;
+        public int tickets;
+        public int cancelled;
+        public int todayBookings;
+        public double revenue;
+        public double todayRevenue;
     }
 }

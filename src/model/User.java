@@ -14,11 +14,11 @@ public class User {
 
     private LocalDateTime createdAt;
 
-    // Status constants
+    
     public static final String STATUS_ACTIVE = "ACTIVE";
     public static final String STATUS_BLOCKED = "BLOCKED";
 
-    /* ================= CONSTRUCTORS ================= */
+    
 
     public User() {}
 
@@ -42,7 +42,7 @@ public class User {
         this.createdAt = createdAt;
     }
 
-    /* ================= GETTERS & SETTERS ================= */
+    
 
     public int getId() { return id; }
     public void setId(int id) { this.id = id; }
@@ -53,13 +53,13 @@ public class User {
     public String getEmail() { return email; }
 
     public void setEmail(String email) {
-        this.email = email.toLowerCase(); // 🔥 normalize
+        this.email = email.toLowerCase(); 
     }
 
     public String getPassword() { return password; }
 
     public void setPassword(String password) {
-        // 🔥 Assume already hashed before setting
+        
         this.password = password;
     }
 
@@ -88,7 +88,7 @@ public class User {
         this.createdAt = createdAt;
     }
 
-    /* ================= HELPERS ================= */
+    
 
     public boolean isAdmin() {
         return Role.isAdmin(role);
@@ -110,7 +110,7 @@ public class User {
         return STATUS_ACTIVE.equalsIgnoreCase(status);
     }
 
-    /* ================= BUSINESS METHODS ================= */
+    
 
     public void blockUser() {
         this.status = STATUS_BLOCKED;
@@ -120,7 +120,7 @@ public class User {
         this.status = STATUS_ACTIVE;
     }
 
-    /* ================= DEBUG ================= */
+    
 
     @Override
     public String toString() {

@@ -24,7 +24,7 @@ public class CardPanel extends JPanel {
         UIConfig.styleCard(this);
     }
 
-    /* ================= ADD WITH PADDING ================= */
+    
 
     public void addPadding(int top, int left, int bottom, int right) {
         setBorder(BorderFactory.createCompoundBorder(
@@ -33,7 +33,7 @@ public class CardPanel extends JPanel {
         ));
     }
 
-    /* ================= TITLE SUPPORT ================= */
+    
 
     public JLabel setTitle(String text) {
 
@@ -45,7 +45,7 @@ public class CardPanel extends JPanel {
         return title;
     }
 
-    /* ================= FOOTER SUPPORT ================= */
+    
 
     public void setFooter(JComponent comp) {
         add(comp, BorderLayout.SOUTH);

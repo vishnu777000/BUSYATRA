@@ -3,6 +3,7 @@ package ui.clerk;
 import config.UIConfig;
 import dao.ReportsDAO;
 import ui.common.MainFrame;
+import util.BookingContext;
 import util.Refreshable;
 
 import javax.swing.*;
@@ -18,6 +19,7 @@ public class BookingClerkDashboard extends JPanel implements Refreshable {
     private final MainFrame frame;
     private JLabel statusLabel;
     private JButton refreshBtn;
+    private ClerkTodaySchedulePanel todaySchedulePanel;
 
     private final DecimalFormat df = new DecimalFormat("#,##0.00");
     private ClerkKPIPanel kpiPanel;
@@ -75,7 +77,8 @@ public class BookingClerkDashboard extends JPanel implements Refreshable {
         JPanel left = new JPanel(new BorderLayout(12, 12));
         left.setOpaque(false);
         left.add(new ClerkQuickActionsPanel(frame), BorderLayout.NORTH);
-        left.add(new ClerkTodaySchedulePanel(), BorderLayout.CENTER);
+        todaySchedulePanel = new ClerkTodaySchedulePanel();
+        left.add(todaySchedulePanel, BorderLayout.CENTER);
 
         content.add(left);
         content.add(tableCard());
@@ -95,9 +98,16 @@ public class BookingClerkDashboard extends JPanel implements Refreshable {
         table = new JTable(model);
         UIConfig.styleTable(table);
         table.setRowHeight(32);
+        table.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        table.getSelectionModel().addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting()) {
+                syncQuickActionSelection();
+            }
+        });
 
         JScrollPane sp = new JScrollPane(table);
         UIConfig.styleScroll(sp);
+        sp.setColumnHeaderView(table.getTableHeader());
 
         JPanel card = new JPanel(new BorderLayout());
         UIConfig.styleCard(card);
@@ -133,11 +143,14 @@ public class BookingClerkDashboard extends JPanel implements Refreshable {
         if (kpiPanel != null) {
             kpiPanel.refreshData();
         }
+        if (todaySchedulePanel != null) {
+            todaySchedulePanel.refreshData();
+        }
 
         SwingWorker<List<String[]>, Void> worker = new SwingWorker<>() {
             @Override
             protected List<String[]> doInBackground() {
-                return new ReportsDAO().getAllBookings();
+                return new ReportsDAO().getRecentBookings(30);
             }
 
             @Override
@@ -148,6 +161,7 @@ public class BookingClerkDashboard extends JPanel implements Refreshable {
 
                     if (list == null || list.isEmpty()) {
                         model.addRow(new Object[]{"-", "No bookings found", "-", "-", "-", "-"});
+                        BookingContext.clearRecentTicketIds();
                     } else {
                         int shown = 0;
                         for (String[] r : list) {
@@ -157,7 +171,7 @@ public class BookingClerkDashboard extends JPanel implements Refreshable {
                             try {
                                 amount = Double.parseDouble(r[4]);
                             } catch (Exception ignore) {
-                                // no-op
+                                
                             }
 
                             model.addRow(new Object[]{
@@ -165,6 +179,11 @@ public class BookingClerkDashboard extends JPanel implements Refreshable {
                             });
                             shown++;
                             if (shown >= 30) break;
+                        }
+                        if (model.getRowCount() > 0 && !"-".equals(String.valueOf(model.getValueAt(0, 0)))) {
+                            table.setRowSelectionInterval(0, 0);
+                        } else {
+                            BookingContext.clearRecentTicketIds();
                         }
                     }
                     setBusy(false, "Queue updated");
@@ -175,6 +194,37 @@ public class BookingClerkDashboard extends JPanel implements Refreshable {
             }
         };
         worker.execute();
+    }
+
+    @Override
+    public boolean refreshOnFirstShow() {
+        return false;
+    }
+
+    private void syncQuickActionSelection() {
+        if (table == null) {
+            return;
+        }
+        int row = table.getSelectedRow();
+        if (row < 0) {
+            BookingContext.clearRecentTicketIds();
+            return;
+        }
+        Object raw = table.getValueAt(row, 0);
+        if (raw == null) {
+            BookingContext.clearRecentTicketIds();
+            return;
+        }
+        try {
+            int ticketId = Integer.parseInt(String.valueOf(raw).trim());
+            if (ticketId > 0) {
+                BookingContext.setActiveTicketId(ticketId);
+            } else {
+                BookingContext.clearRecentTicketIds();
+            }
+        } catch (Exception ignored) {
+            BookingContext.clearRecentTicketIds();
+        }
     }
 
     private void setBusy(boolean busy, String message) {

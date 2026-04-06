@@ -29,7 +29,7 @@ public class BusDAO {
                     if (rs.next()) return c;
                 }
             } catch (Exception ignored) {
-                // try next
+                
             }
         }
         return null;
@@ -94,7 +94,7 @@ public class BusDAO {
                 buses.add(buildBusRow(rs));
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            DBConnectionUtil.logIfUnexpected(e);
         }
 
         return buses;
@@ -123,7 +123,7 @@ public class BusDAO {
             if (status != null) ps.setString(5, "ACTIVE");
             return ps.executeUpdate() > 0;
         } catch (Exception e) {
-            e.printStackTrace();
+            DBConnectionUtil.logIfUnexpected(e);
             return false;
         }
     }
@@ -146,14 +146,14 @@ public class BusDAO {
             ps.setInt(5, id);
             return ps.executeUpdate() > 0;
         } catch (Exception e) {
-            e.printStackTrace();
+            DBConnectionUtil.logIfUnexpected(e);
             return false;
         }
     }
 
     public boolean setBusStatus(int id, String statusValue) {
         String status = statusCol();
-        if (status == null) return true; // schema has no status; treat as no-op success
+        if (status == null) return true; 
 
         String sql = "UPDATE buses SET " + status + "=? WHERE id=?";
         try (Connection con = DBConnectionUtil.getConnection();
@@ -162,7 +162,7 @@ public class BusDAO {
             ps.setInt(2, id);
             return ps.executeUpdate() > 0;
         } catch (Exception e) {
-            e.printStackTrace();
+            DBConnectionUtil.logIfUnexpected(e);
             return false;
         }
     }
@@ -174,7 +174,7 @@ public class BusDAO {
             ps.setInt(1, busId);
             return ps.executeUpdate() > 0;
         } catch (Exception e) {
-            e.printStackTrace();
+            DBConnectionUtil.logIfUnexpected(e);
             return false;
         }
     }
@@ -217,7 +217,7 @@ public class BusDAO {
                 }
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            DBConnectionUtil.logIfUnexpected(e);
         }
         return null;
     }

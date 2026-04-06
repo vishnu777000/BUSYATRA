@@ -9,7 +9,7 @@ public class RefreshManager {
 
     private RefreshManager(){}
 
-    /* ================= REGISTER ================= */
+    
 
     public static void register(Refreshable r){
 
@@ -18,14 +18,14 @@ public class RefreshManager {
         }
     }
 
-    /* ================= UNREGISTER ================= */
+    
 
     public static void unregister(Refreshable r){
 
         listeners.remove(r);
     }
 
-    /* ================= REFRESH ALL ================= */
+    
 
     public static void refreshAll(){
 

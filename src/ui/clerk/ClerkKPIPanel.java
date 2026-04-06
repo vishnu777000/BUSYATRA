@@ -22,7 +22,7 @@ public class ClerkKPIPanel extends JPanel implements Refreshable {
         setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
         ticketsCard = card("Tickets Sold", "0", UIConfig.PRIMARY);
-        revenueCard = card("Revenue", "₹ 0", UIConfig.SUCCESS);
+        revenueCard = card("Revenue", "INR 0.00", UIConfig.SUCCESS);
         busesCard = card("Buses Today", "0", UIConfig.INFO);
         seatsCard = card("Available Seats", "0", UIConfig.SECONDARY);
 
@@ -30,65 +30,44 @@ public class ClerkKPIPanel extends JPanel implements Refreshable {
         add(revenueCard);
         add(busesCard);
         add(seatsCard);
-
-        refreshData();
     }
-
-    /* ================= KPI CARD ================= */
 
     private DashboardCard card(String title, String value, Color accent) {
 
         DashboardCard card = new DashboardCard(title, value);
         card.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-
         card.setBorder(
                 BorderFactory.createCompoundBorder(
                         BorderFactory.createMatteBorder(0, 4, 0, 0, accent),
                         BorderFactory.createEmptyBorder(10, 10, 10, 10)
                 )
         );
-
         return card;
     }
-
-    /* ================= LOAD DATA ================= */
 
     @Override
     public void refreshData() {
 
         SwingWorker<Void, Void> worker = new SwingWorker<>() {
 
-            int tickets = 0;
-            double revenue = 0;
-            int buses = 0;
-            int seats = 0;
+            ClerkDashboardDAO.DashboardSnapshot snapshot = new ClerkDashboardDAO.DashboardSnapshot();
 
             @Override
             protected Void doInBackground() {
-
                 try {
-
-                    ClerkDashboardDAO dao = new ClerkDashboardDAO();
-
-                    tickets = dao.getTodayTickets();
-                    revenue = dao.getTodayRevenue();
-                    buses = dao.getTodayBuses();
-                    seats = dao.getAvailableSeats();
-
+                    snapshot = new ClerkDashboardDAO().getTodaySnapshot();
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
-
                 return null;
             }
 
             @Override
             protected void done() {
-
-                ticketsCard.setValue(String.valueOf(tickets));
-                revenueCard.setValue("₹ " + revenue);
-                busesCard.setValue(String.valueOf(buses));
-                seatsCard.setValue(String.valueOf(seats));
+                ticketsCard.setValue(String.valueOf(snapshot.tickets));
+                revenueCard.setValue("INR " + String.format("%.2f", snapshot.revenue));
+                busesCard.setValue(String.valueOf(snapshot.buses));
+                seatsCard.setValue(String.valueOf(snapshot.availableSeats));
             }
         };
 

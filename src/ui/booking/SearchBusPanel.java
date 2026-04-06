@@ -7,6 +7,7 @@ import dao.RouteDAO;
 import dao.SearchDAO;
 import ui.common.MainFrame;
 import util.BookingContext;
+import util.FareCalculator;
 import util.IconUtil;
 
 import javax.swing.*;
@@ -16,10 +17,15 @@ import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.Locale;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 public class SearchBusPanel extends JPanel {
@@ -38,8 +44,13 @@ public class SearchBusPanel extends JPanel {
 
     private final CityDAO cityDAO = new CityDAO();
     private final SearchDAO searchDAO = new SearchDAO();
+    private final RouteDAO routeDAO = new RouteDAO();
     private final Map<String, List<String>> cityCache = new HashMap<>();
     private final Map<String, Double> fareCache = new HashMap<>();
+    private final Map<Integer, RoutePreviewData> routePreviewCache = new ConcurrentHashMap<>();
+    private final Set<Integer> routePreviewLoading = ConcurrentHashMap.newKeySet();
+    private volatile long suggestionToken = 0L;
+    private volatile long searchToken = 0L;
 
     private List<String[]> lastSearchRaw = new ArrayList<>();
     private String lastSource = "";
@@ -67,7 +78,7 @@ public class SearchBusPanel extends JPanel {
         JLabel title = new JLabel("Search Buses");
         title.setFont(new Font("Segoe UI", Font.BOLD, 24));
 
-        JLabel sub = new JLabel("Fast route search with live fare and seat visibility");
+        JLabel sub = new JLabel("Search by boarding and drop stops with live route-stop matching");
         sub.setForeground(UIConfig.TEXT_LIGHT);
         sub.setFont(UIConfig.FONT_SMALL);
 
@@ -91,8 +102,8 @@ public class SearchBusPanel extends JPanel {
         gbc.fill = GridBagConstraints.HORIZONTAL;
         gbc.weightx = 1;
 
-        sourceField = createInput("Source City");
-        destinationField = createInput("Destination City");
+        sourceField = createInput("Boarding Stop / City");
+        destinationField = createInput("Drop Stop / City");
         addAutoSuggest(sourceField);
         addAutoSuggest(destinationField);
 
@@ -108,9 +119,10 @@ public class SearchBusPanel extends JPanel {
         });
 
         dateChooser = new JDateChooser();
-        dateChooser.setDate(new Date());
+        dateChooser.setDate(todayStart());
         dateChooser.setDateFormatString("yyyy-MM-dd");
         dateChooser.setPreferredSize(new Dimension(160, 40));
+        dateChooser.setMinSelectableDate(todayStart());
 
         searchBtn = new JButton("Search Buses");
         UIConfig.primaryBtn(searchBtn);
@@ -198,28 +210,65 @@ public class SearchBusPanel extends JPanel {
             if (text.length() < 1) return;
 
             String cacheKey = text.toUpperCase();
-            List<String> cities = cityCache.containsKey(cacheKey)
-                    ? cityCache.get(cacheKey)
-                    : cityDAO.searchCities(text);
+            long token = ++suggestionToken;
 
-            cityCache.put(cacheKey, cities);
-            if (cityCache.size() > 80) {
-                cityCache.clear();
+            List<String> cached = cityCache.get(cacheKey);
+            if (cached != null) {
+                showSuggestions(field, popup, cached, cacheKey, token);
+                return;
             }
 
-            for (String city : cities) {
-                JMenuItem item = new JMenuItem(city);
-                item.addActionListener(a -> {
-                    field.setText(city);
-                    popup.setVisible(false);
-                });
-                popup.add(item);
-            }
+            SwingWorker<List<String>, Void> worker = new SwingWorker<>() {
+                @Override
+                protected List<String> doInBackground() {
+                    return cityDAO.searchCities(text);
+                }
 
-            if (popup.getComponentCount() > 0) {
-                popup.show(field, 0, field.getHeight());
-            }
+                @Override
+                protected void done() {
+                    try {
+                        List<String> cities = get();
+                        cityCache.put(cacheKey, cities == null ? List.of() : cities);
+                        if (cityCache.size() > 80) {
+                            cityCache.clear();
+                        }
+                        showSuggestions(field, popup, cities, cacheKey, token);
+                    } catch (Exception ignored) {
+                        popup.setVisible(false);
+                    }
+                }
+            };
+            worker.execute();
         });
+    }
+
+    private void showSuggestions(JTextField field, JPopupMenu popup, List<String> cities, String cacheKey, long token) {
+        if (token != suggestionToken || !field.isShowing()) {
+            return;
+        }
+
+        String current = field.getText() == null ? "" : field.getText().trim().toUpperCase();
+        if (!cacheKey.equals(current)) {
+            return;
+        }
+
+        popup.setVisible(false);
+        popup.removeAll();
+
+        if (cities == null || cities.isEmpty()) {
+            return;
+        }
+
+        for (String city : cities) {
+            JMenuItem item = new JMenuItem(city);
+            item.addActionListener(a -> {
+                field.setText(city);
+                popup.setVisible(false);
+            });
+            popup.add(item);
+        }
+
+        popup.show(field, 0, field.getHeight());
     }
 
     private JComponent buildResults() {
@@ -241,14 +290,24 @@ public class SearchBusPanel extends JPanel {
     }
 
     private void search() {
-        String src = sourceField.getText() == null ? "" : sourceField.getText().trim();
-        String dst = destinationField.getText() == null ? "" : destinationField.getText().trim();
+        String rawSrc = sourceField.getText() == null ? "" : sourceField.getText().trim();
+        String rawDst = destinationField.getText() == null ? "" : destinationField.getText().trim();
         Date dateObj = dateChooser.getDate();
 
-        if (src.isBlank() || dst.isBlank()) {
+        if (rawSrc.isBlank() || rawDst.isBlank()) {
             JOptionPane.showMessageDialog(this, "Please enter source and destination.");
             return;
         }
+
+        String src = cityDAO.resolveCityName(rawSrc);
+        String dst = cityDAO.resolveCityName(rawDst);
+        if (!src.equals(rawSrc)) {
+            sourceField.setText(src);
+        }
+        if (!dst.equals(rawDst)) {
+            destinationField.setText(dst);
+        }
+
         if (src.equalsIgnoreCase(dst)) {
             JOptionPane.showMessageDialog(this, "Source and destination cannot be same.");
             return;
@@ -257,14 +316,20 @@ public class SearchBusPanel extends JPanel {
             JOptionPane.showMessageDialog(this, "Please select a journey date.");
             return;
         }
+        if (dateObj.before(todayStart())) {
+            dateChooser.setDate(todayStart());
+            JOptionPane.showMessageDialog(this, "Past journey dates are not allowed.");
+            return;
+        }
 
         String date = new SimpleDateFormat("yyyy-MM-dd").format(dateObj);
         lastSource = src;
         lastDestination = dst;
         lastDate = date;
         fareCache.clear();
+        long token = ++searchToken;
 
-        setLoading(true, "Finding best buses...");
+        setLoading(true, "Finding buses for the selected stops...");
         resultsPanel.removeAll();
         resultsPanel.add(loadingSkeleton());
         resultsPanel.revalidate();
@@ -273,11 +338,16 @@ public class SearchBusPanel extends JPanel {
         SwingWorker<List<String[]>, Void> worker = new SwingWorker<>() {
             @Override
             protected List<String[]> doInBackground() {
-                return searchDAO.searchSchedules(src, dst, date);
+                List<String[]> results = searchDAO.searchSchedules(src, dst, date);
+                preloadFares(results, src, dst);
+                return results;
             }
 
             @Override
             protected void done() {
+                if (token != searchToken) {
+                    return;
+                }
                 try {
                     List<String[]> list = get();
                     lastSearchRaw = list == null ? new ArrayList<>() : new ArrayList<>(list);
@@ -293,6 +363,34 @@ public class SearchBusPanel extends JPanel {
             }
         };
         worker.execute();
+    }
+
+    private void preloadFares(List<String[]> rows, String src, String dst) {
+        if (rows == null || rows.isEmpty()) {
+            return;
+        }
+
+        for (String[] row : rows) {
+            if (row == null || row.length <= 4) {
+                continue;
+            }
+
+            int routeId = parseInt(row[1]);
+            String key = fareKey(routeId, src, dst);
+            double fare = parseDouble(row[4]);
+
+            if (fare <= 0) {
+                Double cached = fareCache.get(key);
+                if (cached != null) {
+                    fare = cached;
+                } else if (routeId > 0) {
+                    fare = fallbackFare(routeId, safe(row[3]), src, dst);
+                }
+            }
+
+            fareCache.put(key, fare);
+            row[4] = String.valueOf(fare);
+        }
     }
 
     private void renderResults(List<String[]> list, String src, String dst, String date) {
@@ -374,6 +472,14 @@ public class SearchBusPanel extends JPanel {
         route.setForeground(UIConfig.TEXT_LIGHT);
         route.setFont(UIConfig.FONT_SMALL);
 
+        JLabel routeMeta = new JLabel("Checking route coverage...");
+        routeMeta.setForeground(new Color(30, 64, 175));
+        routeMeta.setFont(UIConfig.FONT_SMALL);
+
+        JLabel routeTrail = new JLabel(" ");
+        routeTrail.setForeground(UIConfig.TEXT_LIGHT);
+        routeTrail.setFont(UIConfig.FONT_SMALL);
+
         JLabel timing = new JLabel(dep + "  ->  " + arr);
         timing.setFont(UIConfig.FONT_NORMAL);
 
@@ -385,9 +491,15 @@ public class SearchBusPanel extends JPanel {
         left.add(Box.createVerticalStrut(4));
         left.add(route);
         left.add(Box.createVerticalStrut(4));
+        left.add(routeMeta);
+        left.add(Box.createVerticalStrut(3));
+        left.add(routeTrail);
+        left.add(Box.createVerticalStrut(4));
         left.add(timing);
         left.add(Box.createVerticalStrut(4));
         left.add(seatInfo);
+
+        populateRoutePreview(routeId, src, dst, routeMeta, routeTrail);
 
         JPanel right = new JPanel(new BorderLayout(0, 10));
         right.setOpaque(false);
@@ -544,12 +656,193 @@ public class SearchBusPanel extends JPanel {
         double fare = row != null && row.length > 4 ? parseDouble(row[4]) : 0;
         if (fare > 0) return fare;
 
-        String key = routeId + "|" + (src == null ? "" : src.trim().toUpperCase()) + "|" +
-                (dst == null ? "" : dst.trim().toUpperCase());
-        if (fareCache.containsKey(key)) return fareCache.get(key);
+        fare = fareCache.getOrDefault(fareKey(routeId, src, dst), 0.0);
+        if (fare > 0) {
+            return fare;
+        }
 
-        double computed = new RouteDAO().calculateFare(routeId, src, dst);
-        fareCache.put(key, computed);
-        return computed;
+        return fallbackFare(routeId, row != null && row.length > 3 ? safe(row[3]) : "", src, dst);
+    }
+
+    private String fareKey(int routeId, String src, String dst) {
+        return routeId + "|" + (src == null ? "" : src.trim().toUpperCase()) + "|" +
+                (dst == null ? "" : dst.trim().toUpperCase());
+    }
+
+    private double fallbackFare(int routeId, String busType, String src, String dst) {
+        if (routeId <= 0) {
+            return 0;
+        }
+
+        int fromDistance = routeDAO.getDistance(routeId, src);
+        int toDistance = routeDAO.getDistance(routeId, dst);
+        if (fromDistance < 0 || toDistance < 0) {
+            return 0;
+        }
+        double rate = routeDAO.getRatePerKm(routeId);
+        int segmentDistance = Math.abs(toDistance - fromDistance);
+        return FareCalculator.calculateSegmentFare(segmentDistance, rate, busType, 0);
+    }
+
+    private void populateRoutePreview(int routeId, String src, String dst, JLabel metaLabel, JLabel trailLabel) {
+        if (routeId <= 0) {
+            metaLabel.setText("Route details unavailable");
+            trailLabel.setText(" ");
+            return;
+        }
+
+        RoutePreviewData cached = routePreviewCache.get(routeId);
+        if (cached != null) {
+            applyRoutePreview(cached, src, dst, metaLabel, trailLabel);
+            return;
+        }
+
+        metaLabel.setText("Checking route coverage...");
+        trailLabel.setText("Open Route & Stops for the full route line.");
+
+        if (!routePreviewLoading.add(routeId)) {
+            return;
+        }
+
+        SwingWorker<RoutePreviewData, Void> worker = new SwingWorker<>() {
+            @Override
+            protected RoutePreviewData doInBackground() {
+                RoutePreviewData data = new RoutePreviewData();
+                List<String[]> stopRows = routeDAO.getStopsByRoute(routeId);
+                if (stopRows == null) {
+                    return data;
+                }
+
+                Set<String> seen = new HashSet<>();
+                for (String[] row : stopRows) {
+                    String stop = row != null && row.length > 0 && row[0] != null ? row[0].trim() : "";
+                    if (stop.isBlank()) {
+                        continue;
+                    }
+                    String key = stop.toUpperCase(Locale.ENGLISH);
+                    if (seen.add(key)) {
+                        data.stops.add(stop);
+                    }
+                }
+                return data;
+            }
+
+            @Override
+            protected void done() {
+                routePreviewLoading.remove(routeId);
+                try {
+                    RoutePreviewData data = get();
+                    routePreviewCache.put(routeId, data);
+                    applyRoutePreview(data, src, dst, metaLabel, trailLabel);
+                } catch (Exception ignored) {
+                    metaLabel.setText("Open Route & Stops to verify the route");
+                    trailLabel.setText(" ");
+                }
+            }
+        };
+        worker.execute();
+    }
+
+    private void applyRoutePreview(RoutePreviewData data, String src, String dst, JLabel metaLabel, JLabel trailLabel) {
+        if (data == null || data.stops.isEmpty()) {
+            metaLabel.setText("Open Route & Stops to verify the route");
+            trailLabel.setText("Live stop list is unavailable for this bus.");
+            return;
+        }
+
+        int fromIndex = stopIndex(data.stops, src);
+        int toIndex = stopIndex(data.stops, dst);
+        String fullLine = summarizeStops(data.stops, 6);
+
+        if (fromIndex >= 0 && toIndex >= 0 && fromIndex < toIndex) {
+            List<String> segmentStops = new ArrayList<>(data.stops.subList(fromIndex, toIndex + 1));
+            int intermediateStops = Math.max(0, segmentStops.size() - 2);
+            metaLabel.setText(
+                    intermediateStops == 0
+                            ? "This bus directly covers your selected segment"
+                            : "This bus passes through your selected segment via " + intermediateStops + " stop(s)"
+            );
+            trailLabel.setText(
+                    "<html><body style='width:430px'>Bus line: " + escapeHtml(fullLine) +
+                            "<br/>Your segment: " + escapeHtml(summarizeStops(segmentStops, 5)) + "</body></html>"
+            );
+            return;
+        }
+
+        metaLabel.setText("Full route line available for this bus");
+        trailLabel.setText("<html><body style='width:430px'>Bus line: " + escapeHtml(fullLine) + "</body></html>");
+    }
+
+    private int stopIndex(List<String> stops, String target) {
+        if (stops == null || stops.isEmpty() || target == null || target.isBlank()) {
+            return -1;
+        }
+        for (int i = 0; i < stops.size(); i++) {
+            String stop = stops.get(i);
+            if (stop != null && stop.trim().equalsIgnoreCase(target.trim())) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private String summarizeStops(List<String> stops, int maxShown) {
+        if (stops == null || stops.isEmpty()) {
+            return "";
+        }
+
+        List<String> clean = stops.stream()
+                .filter(s -> s != null && !s.isBlank())
+                .collect(Collectors.toList());
+        if (clean.isEmpty()) {
+            return "";
+        }
+        if (clean.size() <= Math.max(2, maxShown)) {
+            return String.join(" -> ", clean);
+        }
+
+        List<String> visible = new ArrayList<>();
+        visible.add(clean.get(0));
+
+        int middleSlots = Math.max(1, maxShown - 2);
+        int remaining = clean.size() - 2;
+        if (remaining <= middleSlots) {
+            visible.addAll(clean.subList(1, clean.size() - 1));
+        } else {
+            for (int i = 1; i <= middleSlots; i++) {
+                int idx = (int) Math.round((i * remaining) / (double) (middleSlots + 1));
+                idx = Math.max(1, Math.min(clean.size() - 2, idx));
+                String stop = clean.get(idx);
+                if (!visible.contains(stop)) {
+                    visible.add(stop);
+                }
+            }
+        }
+
+        visible.add(clean.get(clean.size() - 1));
+        return String.join(" -> ", visible);
+    }
+
+    private String escapeHtml(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        return value
+                .replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;");
+    }
+
+    private Date todayStart() {
+        Calendar calendar = Calendar.getInstance();
+        calendar.set(Calendar.HOUR_OF_DAY, 0);
+        calendar.set(Calendar.MINUTE, 0);
+        calendar.set(Calendar.SECOND, 0);
+        calendar.set(Calendar.MILLISECOND, 0);
+        return calendar.getTime();
+    }
+
+    private static class RoutePreviewData {
+        List<String> stops = new ArrayList<>();
     }
 }

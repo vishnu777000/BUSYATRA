@@ -8,43 +8,48 @@ import java.util.List;
 
 public class WalletDAO {
 
-    private volatile boolean walletSchemaChecked = false;
+    private static final Object SCHEMA_LOCK = new Object();
+    private static volatile boolean walletSchemaChecked = false;
 
     private void ensureWalletSchema() {
 
         if (walletSchemaChecked) return;
 
-        String walletSql =
-                "CREATE TABLE IF NOT EXISTS wallets (" +
-                "id INT PRIMARY KEY AUTO_INCREMENT," +
-                "user_id INT NOT NULL UNIQUE," +
-                "balance DECIMAL(12,2) NOT NULL DEFAULT 0," +
-                "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP" +
-                ")";
+        synchronized (SCHEMA_LOCK) {
+            if (walletSchemaChecked) return;
 
-        String txSql =
-                "CREATE TABLE IF NOT EXISTS wallet_transactions (" +
-                "id INT PRIMARY KEY AUTO_INCREMENT," +
-                "user_id INT NOT NULL," +
-                "type VARCHAR(20) NOT NULL," +
-                "amount DECIMAL(12,2) NOT NULL," +
-                "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP" +
-                ")";
+            String walletSql =
+                    "CREATE TABLE IF NOT EXISTS wallets (" +
+                    "id INT PRIMARY KEY AUTO_INCREMENT," +
+                    "user_id INT NOT NULL UNIQUE," +
+                    "balance DECIMAL(12,2) NOT NULL DEFAULT 0," +
+                    "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP" +
+                    ")";
 
-        try (Connection con = DBConfig.getConnection();
-             PreparedStatement ps1 = con.prepareStatement(walletSql);
-             PreparedStatement ps2 = con.prepareStatement(txSql)) {
+            String txSql =
+                    "CREATE TABLE IF NOT EXISTS wallet_transactions (" +
+                    "id INT PRIMARY KEY AUTO_INCREMENT," +
+                    "user_id INT NOT NULL," +
+                    "type VARCHAR(20) NOT NULL," +
+                    "amount DECIMAL(12,2) NOT NULL," +
+                    "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP" +
+                    ")";
 
-            ps1.executeUpdate();
-            ps2.executeUpdate();
-            walletSchemaChecked = true;
+            try (Connection con = DBConfig.getConnection();
+                 PreparedStatement ps1 = con.prepareStatement(walletSql);
+                 PreparedStatement ps2 = con.prepareStatement(txSql)) {
 
-        } catch (Exception ignored) {
-            // Keep graceful fallbacks in wallet reads.
+                ps1.executeUpdate();
+                ps2.executeUpdate();
+                walletSchemaChecked = true;
+
+            } catch (Exception ignored) {
+
+            }
         }
     }
 
-    /* ================= CREATE WALLET ================= */
+    
 
     private boolean columnExists(String table, String column) {
         String sql =
@@ -76,11 +81,11 @@ public class WalletDAO {
             ps.executeUpdate();
 
         }catch(Exception e){
-            // no-op
+            
         }
     }
 
-    /* ================= BALANCE ================= */
+    
 
     public double getBalance(int userId) {
 
@@ -100,13 +105,13 @@ public class WalletDAO {
             }
 
         } catch (Exception e) {
-            // no-op
+            
         }
 
         return 0;
     }
 
-    /* ================= ADD MONEY ================= */
+    
 
     public boolean addMoney(int userId, double amount) {
 
@@ -155,13 +160,13 @@ public class WalletDAO {
             }
 
         } catch (Exception e) {
-            // no-op
+            
         }
 
         return false;
     }
 
-    /* ================= DEDUCT MONEY ================= */
+    
 
     public boolean deductMoney(int userId, double amount) {
 
@@ -212,20 +217,20 @@ public class WalletDAO {
             }
 
         } catch (Exception e) {
-            // no-op
+            
         }
 
         return false;
     }
 
-    /* ================= CHECK BALANCE ================= */
+    
 
     public boolean hasEnoughBalance(int userId, double amount){
 
         return getBalance(userId) >= amount;
     }
 
-    /* ================= TRANSACTION HISTORY ================= */
+    
 
     public List<String[]> getTransactions(int userId) {
 
@@ -254,7 +259,7 @@ public class WalletDAO {
             }
 
         } catch (Exception e) {
-            // no-op
+            
         }
 
         return list;

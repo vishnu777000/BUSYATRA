@@ -25,19 +25,19 @@ public class ClerkStatusBar extends JPanel {
                         1, 0, 0, 0, UIConfig.BORDER)
         );
 
-        /* ================= LEFT STATUS ================= */
+        
         statusLabel = new JLabel(" DB: Connected  |  Mode: ONLINE ");
         statusLabel.setFont(UIConfig.FONT_SMALL);
         statusLabel.setForeground(UIConfig.TEXT);
 
-        /* ================= RIGHT CLOCK ================= */
+        
         timeLabel = new JLabel();
         timeLabel.setFont(UIConfig.FONT_SMALL);
         timeLabel.setForeground(UIConfig.TEXT);
 
         updateTime();
 
-        // ⏱ live clock (Swing-safe)
+        
         Timer timer = new Timer(1000, e -> updateTime());
         timer.setRepeats(true);
         timer.start();
@@ -46,22 +46,22 @@ public class ClerkStatusBar extends JPanel {
         add(timeLabel, BorderLayout.EAST);
     }
 
-    /* ================= TIME ================= */
+    
     private void updateTime() {
         timeLabel.setText(
                 LocalDateTime.now().format(TIME_FMT) + "  "
         );
     }
 
-    /* ================= STATUS CONTROL (READY) ================= */
+    
 
-    // call this if DB disconnects
+    
     public void setDbDisconnected() {
         statusLabel.setText(" DB: Disconnected  |  Mode: OFFLINE ");
         statusLabel.setForeground(UIConfig.DANGER);
     }
 
-    // call this after reconnect
+    
     public void setDbConnected() {
         statusLabel.setText(" DB: Connected  |  Mode: ONLINE ");
         statusLabel.setForeground(UIConfig.SUCCESS);

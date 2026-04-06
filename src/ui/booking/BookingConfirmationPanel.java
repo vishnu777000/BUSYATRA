@@ -23,7 +23,7 @@ public BookingConfirmationPanel(MainFrame frame){
     add(actions(),BorderLayout.SOUTH);
 }
 
-/* ================= HEADER ================= */
+
 
 private JComponent header(){
 
@@ -47,7 +47,7 @@ private JComponent header(){
     return p;
 }
 
-/* ================= CENTER CARD ================= */
+
 
 private JComponent centerCard(){
 
@@ -83,7 +83,7 @@ private JComponent centerCard(){
     return wrapper;
 }
 
-/* ================= ROW ================= */
+
 
 private JPanel row(String key,String value){
 
@@ -103,7 +103,7 @@ private JPanel row(String key,String value){
     return r;
 }
 
-/* ================= TOTAL ================= */
+
 
 private JPanel totalRow(){
 
@@ -123,7 +123,7 @@ private JPanel totalRow(){
     return r;
 }
 
-/* ================= ACTIONS ================= */
+
 
 private JComponent actions(){
 
@@ -148,7 +148,7 @@ private JComponent actions(){
 private JButton btn(String text){
 
     JButton b = new JButton(text);
-    b.setPreferredSize(new Dimension(180,40)); // 🔥 consistent size
+    b.setPreferredSize(new Dimension(180,40)); 
     return b;
 }
 

@@ -2,12 +2,15 @@ package ui.admin;
 
 import config.UIConfig;
 import dao.RouteDAO;
+import util.GeneratedRouteMapUtil;
 import util.Refreshable;
+import util.RouteMapImageUtil;
 
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
 import java.io.File;
+import java.util.concurrent.ExecutionException;
 import java.util.List;
 
 public class ManageRoutesPanel extends JPanel implements Refreshable {
@@ -30,6 +33,7 @@ public class ManageRoutesPanel extends JPanel implements Refreshable {
     private JButton refreshBtn;
 
     private int selectedRouteId = -1;
+    private int previewRequestVersion = 0;
     private final RouteDAO dao = new RouteDAO();
 
     public ManageRoutesPanel() {
@@ -104,6 +108,7 @@ public class ManageRoutesPanel extends JPanel implements Refreshable {
 
         JScrollPane sp = new JScrollPane(table);
         UIConfig.styleScroll(sp);
+        sp.setColumnHeaderView(table.getTableHeader());
 
         loadingLabel = new JLabel(" ");
         loadingLabel.setForeground(UIConfig.TEXT_LIGHT);
@@ -197,22 +202,32 @@ public class ManageRoutesPanel extends JPanel implements Refreshable {
     private void loadRoutes() {
         setBusy(true, "Loading routes...");
         SwingWorker<List<String[]>, Void> worker = new SwingWorker<>() {
+            private String errorMessage;
+
             @Override
             protected List<String[]> doInBackground() {
-                return dao.getAllRoutes();
+                List<String[]> routes = dao.getAllRoutes();
+                errorMessage = dao.getLastError();
+                return routes;
             }
 
             @Override
             protected void done() {
                 try {
+                    List<String[]> routes = get();
                     model.setRowCount(0);
-                    for (String[] r : get()) {
+                    for (String[] r : routes) {
                         model.addRow(r);
                     }
-                    loadingLabel.setText("Loaded " + model.getRowCount() + " routes");
+                    if ((routes == null || routes.isEmpty()) && dao.hasLastError()) {
+                        loadingLabel.setText(errorMessage);
+                    } else {
+                        loadingLabel.setText("Loaded " + model.getRowCount() + " routes");
+                    }
                 } catch (Exception ex) {
-                    loadingLabel.setText("Failed to load routes");
-                    JOptionPane.showMessageDialog(ManageRoutesPanel.this, "Failed to load routes");
+                    String error = (errorMessage == null || errorMessage.isBlank()) ? "Failed to load routes" : errorMessage;
+                    loadingLabel.setText(error);
+                    JOptionPane.showMessageDialog(ManageRoutesPanel.this, error);
                 } finally {
                     setBusy(false, loadingLabel.getText());
                 }
@@ -229,24 +244,33 @@ public class ManageRoutesPanel extends JPanel implements Refreshable {
         }
         setBusy(true, "Searching...");
         SwingWorker<List<String[]>, Void> worker = new SwingWorker<>() {
+            private String errorMessage;
+
             @Override
             protected List<String[]> doInBackground() {
-                return dao.getAllRoutes();
+                List<String[]> routes = dao.getAllRoutes();
+                errorMessage = dao.getLastError();
+                return routes;
             }
 
             @Override
             protected void done() {
                 try {
+                    List<String[]> routes = get();
                     model.setRowCount(0);
-                    for (String[] r : get()) {
+                    for (String[] r : routes) {
                         String text = (r[1] + " " + r[2] + " " + r[3]).toLowerCase();
                         if (text.contains(q)) {
                             model.addRow(r);
                         }
                     }
-                    loadingLabel.setText("Found " + model.getRowCount() + " routes");
+                    if ((routes == null || routes.isEmpty()) && dao.hasLastError()) {
+                        loadingLabel.setText(errorMessage);
+                    } else {
+                        loadingLabel.setText("Found " + model.getRowCount() + " routes");
+                    }
                 } catch (Exception ex) {
-                    loadingLabel.setText("Search failed");
+                    loadingLabel.setText((errorMessage == null || errorMessage.isBlank()) ? "Search failed" : errorMessage);
                 } finally {
                     setBusy(false, loadingLabel.getText());
                 }
@@ -267,16 +291,40 @@ public class ManageRoutesPanel extends JPanel implements Refreshable {
         String map = model.getValueAt(row, 4) == null ? "" : model.getValueAt(row, 4).toString();
         mapPreview.setIcon(null);
         mapPreview.setText("No Map");
-        if (!map.isBlank()) {
-            try {
-                ImageIcon icon = new ImageIcon(map);
-                Image img = icon.getImage().getScaledInstance(220, 130, Image.SCALE_SMOOTH);
-                mapPreview.setIcon(new ImageIcon(img));
-                mapPreview.setText("");
-            } catch (Exception ignore) {
-                mapPreview.setText("Preview unavailable");
+
+        final int requestVersion = ++previewRequestVersion;
+        mapPreview.setText("Loading preview...");
+        SwingWorker<ImageIcon, Void> worker = new SwingWorker<>() {
+            @Override
+            protected ImageIcon doInBackground() {
+                ImageIcon icon = RouteMapImageUtil.resolve(map);
+                if (icon != null) {
+                    return RouteMapImageUtil.scaleToFit(icon, 220, 130);
+                }
+                return GeneratedRouteMapUtil.buildFromRows(dao.getStopsByRoute(selectedRouteId), "", "", 220, 130);
             }
-        }
+
+            @Override
+            protected void done() {
+                if (requestVersion != previewRequestVersion) {
+                    return;
+                }
+                try {
+                    ImageIcon icon = get();
+                    if (icon != null) {
+                        mapPreview.setIcon(icon);
+                        mapPreview.setText("");
+                    } else {
+                        mapPreview.setIcon(null);
+                        mapPreview.setText("Preview unavailable");
+                    }
+                } catch (Exception ex) {
+                    mapPreview.setIcon(null);
+                    mapPreview.setText("Preview unavailable");
+                }
+            }
+        };
+        worker.execute();
     }
 
     private void addRoute() {
@@ -291,9 +339,13 @@ public class ManageRoutesPanel extends JPanel implements Refreshable {
 
             setBusy(true, "Adding route...");
             SwingWorker<Boolean, Void> worker = new SwingWorker<>() {
+                private String errorMessage;
+
                 @Override
                 protected Boolean doInBackground() {
-                    return dao.addRouteMaster(name, km, rate);
+                    boolean ok = dao.addRouteMaster(name, km, rate);
+                    errorMessage = dao.getLastError();
+                    return ok;
                 }
 
                 @Override
@@ -304,12 +356,14 @@ public class ManageRoutesPanel extends JPanel implements Refreshable {
                             loadRoutes();
                             JOptionPane.showMessageDialog(ManageRoutesPanel.this, "Route added");
                         } else {
-                            setBusy(false, "Add failed");
-                            JOptionPane.showMessageDialog(ManageRoutesPanel.this, "Add failed");
+                            String error = (errorMessage == null || errorMessage.isBlank()) ? "Add failed" : errorMessage;
+                            setBusy(false, error);
+                            JOptionPane.showMessageDialog(ManageRoutesPanel.this, error);
                         }
                     } catch (Exception ex) {
-                        setBusy(false, "Add failed");
-                        JOptionPane.showMessageDialog(ManageRoutesPanel.this, "Add failed");
+                        String error = (errorMessage == null || errorMessage.isBlank()) ? "Add failed" : errorMessage;
+                        setBusy(false, error);
+                        JOptionPane.showMessageDialog(ManageRoutesPanel.this, error);
                     }
                 }
             };
@@ -331,9 +385,13 @@ public class ManageRoutesPanel extends JPanel implements Refreshable {
 
             setBusy(true, "Updating route...");
             SwingWorker<Boolean, Void> worker = new SwingWorker<>() {
+                private String errorMessage;
+
                 @Override
                 protected Boolean doInBackground() {
-                    return dao.updateRoute(selectedRouteId, name, km, rate);
+                    boolean ok = dao.updateRoute(selectedRouteId, name, km, rate);
+                    errorMessage = dao.getLastError();
+                    return ok;
                 }
 
                 @Override
@@ -342,12 +400,14 @@ public class ManageRoutesPanel extends JPanel implements Refreshable {
                         if (Boolean.TRUE.equals(get())) {
                             loadRoutes();
                         } else {
-                            setBusy(false, "Update failed");
-                            JOptionPane.showMessageDialog(ManageRoutesPanel.this, "Update failed");
+                            String error = (errorMessage == null || errorMessage.isBlank()) ? "Update failed" : errorMessage;
+                            setBusy(false, error);
+                            JOptionPane.showMessageDialog(ManageRoutesPanel.this, error);
                         }
                     } catch (Exception ex) {
-                        setBusy(false, "Update failed");
-                        JOptionPane.showMessageDialog(ManageRoutesPanel.this, "Update failed");
+                        String error = (errorMessage == null || errorMessage.isBlank()) ? "Update failed" : errorMessage;
+                        setBusy(false, error);
+                        JOptionPane.showMessageDialog(ManageRoutesPanel.this, error);
                     }
                 }
             };
@@ -371,9 +431,13 @@ public class ManageRoutesPanel extends JPanel implements Refreshable {
 
         setBusy(true, "Uploading map...");
         SwingWorker<Boolean, Void> worker = new SwingWorker<>() {
+            private String errorMessage;
+
             @Override
             protected Boolean doInBackground() {
-                return dao.updateRouteMap(selectedRouteId, path);
+                boolean ok = dao.updateRouteMap(selectedRouteId, path);
+                errorMessage = dao.getLastError();
+                return ok;
             }
 
             @Override
@@ -382,12 +446,28 @@ public class ManageRoutesPanel extends JPanel implements Refreshable {
                     if (Boolean.TRUE.equals(get())) {
                         loadRoutes();
                     } else {
-                        setBusy(false, "Map update failed");
-                        JOptionPane.showMessageDialog(ManageRoutesPanel.this, "Map update failed");
+                        String error = errorMessage;
+                        setBusy(false, error);
+                        JOptionPane.showMessageDialog(ManageRoutesPanel.this, error);
                     }
+                } catch (ExecutionException ex) {
+                    String error = errorMessage;
+                    Throwable cause = ex.getCause();
+                    if ((error == null || error.isBlank() || "Route operation failed.".equals(error)) && cause != null && cause.getMessage() != null && !cause.getMessage().isBlank()) {
+                        error = cause.getMessage().trim();
+                    }
+                    if (error == null || error.isBlank()) {
+                        error = "Route operation failed.";
+                    }
+                    setBusy(false, error);
+                    JOptionPane.showMessageDialog(ManageRoutesPanel.this, error);
                 } catch (Exception ex) {
-                    setBusy(false, "Map update failed");
-                    JOptionPane.showMessageDialog(ManageRoutesPanel.this, "Map update failed");
+                    String error = errorMessage;
+                    if (error == null || error.isBlank()) {
+                        error = "Route operation failed.";
+                    }
+                    setBusy(false, error);
+                    JOptionPane.showMessageDialog(ManageRoutesPanel.this, error);
                 }
             }
         };
@@ -404,9 +484,13 @@ public class ManageRoutesPanel extends JPanel implements Refreshable {
 
         setBusy(true, "Deleting route...");
         SwingWorker<Boolean, Void> worker = new SwingWorker<>() {
+            private String errorMessage;
+
             @Override
             protected Boolean doInBackground() {
-                return dao.deleteRoute(selectedRouteId);
+                boolean ok = dao.deleteRoute(selectedRouteId);
+                errorMessage = dao.getLastError();
+                return ok;
             }
 
             @Override
@@ -416,12 +500,14 @@ public class ManageRoutesPanel extends JPanel implements Refreshable {
                         clear();
                         loadRoutes();
                     } else {
-                        setBusy(false, "Delete failed");
-                        JOptionPane.showMessageDialog(ManageRoutesPanel.this, "Delete failed");
+                        String error = (errorMessage == null || errorMessage.isBlank()) ? "Delete failed" : errorMessage;
+                        setBusy(false, error);
+                        JOptionPane.showMessageDialog(ManageRoutesPanel.this, error);
                     }
                 } catch (Exception ex) {
-                    setBusy(false, "Delete failed");
-                    JOptionPane.showMessageDialog(ManageRoutesPanel.this, "Delete failed");
+                    String error = (errorMessage == null || errorMessage.isBlank()) ? "Delete failed" : errorMessage;
+                    setBusy(false, error);
+                    JOptionPane.showMessageDialog(ManageRoutesPanel.this, error);
                 }
             }
         };
@@ -454,6 +540,10 @@ public class ManageRoutesPanel extends JPanel implements Refreshable {
         JTable stopsTable = new JTable(stopsModel);
         UIConfig.styleTable(stopsTable);
         JScrollPane stopScroll = new JScrollPane(stopsTable);
+        UIConfig.styleScroll(stopScroll);
+        stopScroll.setColumnHeaderView(stopsTable.getTableHeader());
+        JLabel stopStatus = new JLabel(" ");
+        stopStatus.setForeground(UIConfig.TEXT_LIGHT);
 
         JPanel addStopCard = new JPanel(new GridLayout(2, 4, 8, 8));
         UIConfig.styleCard(addStopCard);
@@ -488,38 +578,103 @@ public class ManageRoutesPanel extends JPanel implements Refreshable {
                     JOptionPane.showMessageDialog(dialog, "Enter stop name");
                     return;
                 }
-
-                boolean ok = dao.addStop(selectedRouteId, stop, order, distance);
-                if (!ok) {
-                    JOptionPane.showMessageDialog(dialog, "Failed to add stop");
+                if (order <= 0) {
+                    JOptionPane.showMessageDialog(dialog, "Order must be greater than zero");
+                    return;
+                }
+                if (distance < 0) {
+                    JOptionPane.showMessageDialog(dialog, "Distance must be zero or greater");
                     return;
                 }
 
-                stopName.setText("");
-                stopOrder.setText("");
-                stopDistance.setText("");
-                loadRouteStops(stopsModel, selectedRouteId);
+                addStopBtn.setEnabled(false);
+                stopStatus.setText("Adding stop...");
+                SwingWorker<Boolean, Void> worker = new SwingWorker<>() {
+                    private String errorMessage;
+
+                    @Override
+                    protected Boolean doInBackground() {
+                        RouteDAO routeDao = new RouteDAO();
+                        boolean ok = routeDao.addStop(selectedRouteId, stop, order, distance);
+                        errorMessage = routeDao.getLastError();
+                        return ok;
+                    }
+
+                    @Override
+                    protected void done() {
+                        addStopBtn.setEnabled(true);
+                        try {
+                            if (Boolean.TRUE.equals(get())) {
+                                stopName.setText("");
+                                stopOrder.setText("");
+                                stopDistance.setText("");
+                                loadRouteStops(stopsModel, selectedRouteId, stopStatus, addStopBtn);
+                            } else {
+                                stopStatus.setText(errorMessage == null || errorMessage.isBlank() ? "Add stop failed" : errorMessage);
+                                JOptionPane.showMessageDialog(dialog, stopStatus.getText());
+                            }
+                        } catch (Exception ex) {
+                            stopStatus.setText(errorMessage == null || errorMessage.isBlank() ? "Add stop failed" : errorMessage);
+                            JOptionPane.showMessageDialog(dialog, stopStatus.getText());
+                        }
+                    }
+                };
+                worker.execute();
             } catch (Exception ex) {
                 JOptionPane.showMessageDialog(dialog, "Enter valid stop/order/distance");
             }
         });
 
+        dialog.add(stopStatus, BorderLayout.NORTH);
         dialog.add(stopScroll, BorderLayout.CENTER);
         dialog.add(addStopCard, BorderLayout.SOUTH);
-        loadRouteStops(stopsModel, selectedRouteId);
+        loadRouteStops(stopsModel, selectedRouteId, stopStatus, addStopBtn);
         dialog.setVisible(true);
     }
 
-    private void loadRouteStops(DefaultTableModel stopsModel, int routeId) {
+    private void loadRouteStops(DefaultTableModel stopsModel, int routeId, JLabel stopStatus, JButton addStopBtn) {
         stopsModel.setRowCount(0);
-        List<String[]> stops = dao.getStopsByRoute(routeId);
-        for (String[] s : stops) {
-            if (s == null || s.length < 3) continue;
-            stopsModel.addRow(new Object[]{s[0], s[1], s[2]});
-        }
-        if (stopsModel.getRowCount() == 0) {
-            stopsModel.addRow(new Object[]{"No stops configured", "-", "-"});
-        }
+        stopsModel.addRow(new Object[]{"Loading...", "-", "-"});
+        stopStatus.setText("Loading stops...");
+        addStopBtn.setEnabled(false);
+
+        SwingWorker<List<String[]>, Void> worker = new SwingWorker<>() {
+            private String errorMessage;
+
+            @Override
+            protected List<String[]> doInBackground() {
+                RouteDAO routeDao = new RouteDAO();
+                List<String[]> stops = routeDao.getStopsByRoute(routeId);
+                errorMessage = routeDao.getLastError();
+                return stops;
+            }
+
+            @Override
+            protected void done() {
+                addStopBtn.setEnabled(true);
+                try {
+                    List<String[]> stops = get();
+                    stopsModel.setRowCount(0);
+                    for (String[] s : stops) {
+                        if (s == null || s.length < 3) continue;
+                        stopsModel.addRow(new Object[]{s[0], s[1], s[2]});
+                    }
+                    if (stopsModel.getRowCount() == 0) {
+                        String message = (errorMessage == null || errorMessage.isBlank()) ? "No stops configured" : errorMessage;
+                        stopsModel.addRow(new Object[]{message, "-", "-"});
+                        stopStatus.setText(message);
+                    } else {
+                        stopStatus.setText("Loaded " + stopsModel.getRowCount() + " stops");
+                    }
+                } catch (Exception ex) {
+                    stopsModel.setRowCount(0);
+                    String message = (errorMessage == null || errorMessage.isBlank()) ? "Failed to load stops" : errorMessage;
+                    stopsModel.addRow(new Object[]{message, "-", "-"});
+                    stopStatus.setText(message);
+                }
+            }
+        };
+        worker.execute();
     }
 
     private void clear() {
@@ -534,5 +689,10 @@ public class ManageRoutesPanel extends JPanel implements Refreshable {
     @Override
     public void refreshData() {
         loadRoutes();
+    }
+
+    @Override
+    public boolean refreshOnFirstShow() {
+        return false;
     }
 }

@@ -10,8 +10,6 @@ import java.awt.*;
 
 public class SettingsPanel extends JPanel {
 
-    /* ===== Preferences ===== */
-
     private JComboBox<String> themeBox;
     private JComboBox<String> languageBox;
     private JComboBox<String> dateFormatBox;
@@ -29,8 +27,6 @@ public class SettingsPanel extends JPanel {
     private JCheckBox showTooltips;
     private JCheckBox compactMode;
 
-    /* ===== Security ===== */
-
     private JPasswordField oldPass;
     private JPasswordField newPass;
     private JPasswordField confirmPass;
@@ -40,11 +36,14 @@ public class SettingsPanel extends JPanel {
     private JCheckBox hideBalance;
     private JCheckBox loginAlerts;
 
+    private JButton changePasswordBtn;
+    private JLabel securityStatusLabel;
+
     public SettingsPanel() {
 
-        setLayout(new BorderLayout(20,20));
+        setLayout(new BorderLayout(20, 20));
         setBackground(UIConfig.BACKGROUND);
-        setBorder(BorderFactory.createEmptyBorder(20,20,20,20));
+        setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
 
         JLabel title = new JLabel("Settings");
         title.setFont(UIConfig.FONT_TITLE);
@@ -56,28 +55,23 @@ public class SettingsPanel extends JPanel {
 
         add(title, BorderLayout.NORTH);
         add(tabs, BorderLayout.CENTER);
+        loadSavedPreferences();
     }
-
-    /* =================================================
-       GENERAL SETTINGS
-       ================================================= */
 
     private JPanel generalTab() {
 
         JPanel card = cardPanel(10);
 
-        themeBox = combo("LIGHT","DARK","SYSTEM");
-        languageBox = combo("English","Hindi","German");
-        dateFormatBox = combo("dd-MM-yyyy","yyyy-MM-dd","MM/dd/yyyy");
-        currencyBox = combo("INR (₹)","USD ($)","EUR (€)");
+        themeBox = combo("LIGHT", "DARK", "SYSTEM");
+        languageBox = combo("English", "Hindi", "German");
+        dateFormatBox = combo("dd-MM-yyyy", "yyyy-MM-dd", "MM/dd/yyyy");
+        currencyBox = combo("INR (Rs)", "USD ($)", "EUR (EUR)");
 
         autoLogout = check("Auto logout on inactivity");
         rememberFilters = check("Remember search filters");
         confirmBeforePay = check("Confirm before payment");
         showTooltips = check("Show tooltips & hints");
         compactMode = check("Compact UI mode");
-
-        /* ===== REALTIME EVENTS ===== */
 
         themeBox.addActionListener(e -> applyTheme());
 
@@ -96,10 +90,14 @@ public class SettingsPanel extends JPanel {
         compactMode.addActionListener(e ->
                 PreferencesUtil.setCompactMode(compactMode.isSelected()));
 
-        card.add(label("Theme Mode")); card.add(themeBox);
-        card.add(label("Language")); card.add(languageBox);
-        card.add(label("Date Format")); card.add(dateFormatBox);
-        card.add(label("Currency")); card.add(currencyBox);
+        card.add(label("Theme Mode"));
+        card.add(themeBox);
+        card.add(label("Language"));
+        card.add(languageBox);
+        card.add(label("Date Format"));
+        card.add(dateFormatBox);
+        card.add(label("Currency"));
+        card.add(currencyBox);
 
         card.add(autoLogout);
         card.add(rememberFilters);
@@ -112,10 +110,6 @@ public class SettingsPanel extends JPanel {
 
         return card;
     }
-
-    /* =================================================
-       NOTIFICATIONS
-       ================================================= */
 
     private JPanel notificationTab() {
 
@@ -155,13 +149,9 @@ public class SettingsPanel extends JPanel {
         return card;
     }
 
-    /* =================================================
-       SECURITY
-       ================================================= */
-
     private JPanel securityTab() {
 
-        JPanel card = cardPanel(10);
+        JPanel card = cardPanel(11);
 
         oldPass = password("Current Password");
         newPass = password("New Password");
@@ -184,8 +174,11 @@ public class SettingsPanel extends JPanel {
         loginAlerts.addActionListener(e ->
                 PreferencesUtil.setLoginAlerts(loginAlerts.isSelected()));
 
-        JButton change = primaryBtn("Change Password", UIConfig.SUCCESS);
-        change.addActionListener(e -> changePassword());
+        changePasswordBtn = primaryBtn("Change Password", UIConfig.SUCCESS);
+        changePasswordBtn.addActionListener(e -> changePassword());
+
+        securityStatusLabel = new JLabel(" ");
+        securityStatusLabel.setForeground(UIConfig.TEXT_LIGHT);
 
         card.add(oldPass);
         card.add(newPass);
@@ -194,16 +187,33 @@ public class SettingsPanel extends JPanel {
         card.add(deviceLock);
         card.add(hideBalance);
         card.add(loginAlerts);
+        card.add(securityStatusLabel);
         card.add(new JLabel());
         card.add(new JLabel());
-        card.add(change);
+        card.add(changePasswordBtn);
 
         return card;
     }
 
-    /* =================================================
-       REALTIME THEME APPLY
-       ================================================= */
+    private void loadSavedPreferences() {
+        selectComboValue(themeBox, PreferencesUtil.getTheme());
+        autoLogout.setSelected(PreferencesUtil.getAutoLogout());
+        rememberFilters.setSelected(PreferencesUtil.getRememberFilters());
+        confirmBeforePay.setSelected(PreferencesUtil.getConfirmBeforePayment());
+        showTooltips.setSelected(PreferencesUtil.getShowTooltips());
+        compactMode.setSelected(PreferencesUtil.getCompactMode());
+
+        notifEnable.setSelected(PreferencesUtil.getNotifications());
+        emailNotif.setSelected(PreferencesUtil.getEmailNotifications());
+        smsNotif.setSelected(PreferencesUtil.getSMSNotifications());
+        promoNotif.setSelected(PreferencesUtil.getPromoNotifications());
+        soundNotif.setSelected(PreferencesUtil.getSoundNotifications());
+
+        twoFactor.setSelected(PreferencesUtil.getTwoFactor());
+        deviceLock.setSelected(PreferencesUtil.getDeviceLock());
+        hideBalance.setSelected(PreferencesUtil.getHideBalance());
+        loginAlerts.setSelected(PreferencesUtil.getLoginAlerts());
+    }
 
     private void applyTheme() {
 
@@ -215,10 +225,6 @@ public class SettingsPanel extends JPanel {
                 SwingUtilities.getWindowAncestor(this));
     }
 
-    /* =================================================
-       PASSWORD CHANGE
-       ================================================= */
-
     private void changePassword() {
 
         String oldP = new String(oldPass.getPassword());
@@ -226,36 +232,71 @@ public class SettingsPanel extends JPanel {
         String conf = new String(confirmPass.getPassword());
 
         if (oldP.isEmpty() || newP.isEmpty() || conf.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "Fill all password fields!");
+            JOptionPane.showMessageDialog(this, "Fill all password fields");
             return;
         }
 
         if (!newP.equals(conf)) {
-            JOptionPane.showMessageDialog(this, "New passwords do not match!");
+            JOptionPane.showMessageDialog(this, "New passwords do not match");
             return;
         }
 
-        boolean ok = new UserDAO().changePassword(Session.userId, oldP, newP);
+        setPasswordBusy(true, "Changing password...");
 
-        if (ok) {
+        SwingWorker<PasswordChangeResult, Void> worker = new SwingWorker<>() {
+            @Override
+            protected PasswordChangeResult doInBackground() {
+                UserDAO userDAO = new UserDAO();
+                boolean ok = userDAO.changePassword(Session.userId, oldP, newP);
+                return new PasswordChangeResult(ok, userDAO.getLastError());
+            }
 
-            JOptionPane.showMessageDialog(this, "Password updated successfully ✅");
+            @Override
+            protected void done() {
+                setPasswordBusy(false, " ");
 
-            oldPass.setText("");
-            newPass.setText("");
-            confirmPass.setText("");
+                try {
+                    PasswordChangeResult result = get();
+                    if (!result.success) {
+                        if (securityStatusLabel != null) {
+                            securityStatusLabel.setText(result.message);
+                        }
+                        JOptionPane.showMessageDialog(SettingsPanel.this, result.message);
+                        return;
+                    }
 
-        } else {
-            JOptionPane.showMessageDialog(this, "Incorrect current password ❌");
-        }
+                    if (securityStatusLabel != null) {
+                        securityStatusLabel.setText("Password updated");
+                    }
+                    JOptionPane.showMessageDialog(SettingsPanel.this, "Password updated successfully");
+
+                    oldPass.setText("");
+                    newPass.setText("");
+                    confirmPass.setText("");
+                } catch (Exception e) {
+                    if (securityStatusLabel != null) {
+                        securityStatusLabel.setText("Password change failed");
+                    }
+                    JOptionPane.showMessageDialog(SettingsPanel.this, "Password change failed");
+                }
+            }
+        };
+
+        worker.execute();
     }
 
-    /* =================================================
-       UI HELPERS
-       ================================================= */
+    private void setPasswordBusy(boolean busy, String message) {
+        if (changePasswordBtn != null) {
+            changePasswordBtn.setEnabled(!busy);
+        }
+        if (securityStatusLabel != null) {
+            securityStatusLabel.setText(message == null ? " " : message);
+        }
+        setCursor(Cursor.getPredefinedCursor(busy ? Cursor.WAIT_CURSOR : Cursor.DEFAULT_CURSOR));
+    }
 
     private JPanel cardPanel(int rows) {
-        JPanel p = new JPanel(new GridLayout(rows,2,12,12));
+        JPanel p = new JPanel(new GridLayout(rows, 2, 12, 12));
         UIConfig.styleCard(p);
         return p;
     }
@@ -270,6 +311,20 @@ public class SettingsPanel extends JPanel {
         JComboBox<String> b = new JComboBox<>(items);
         b.setFont(UIConfig.FONT_NORMAL);
         return b;
+    }
+
+    private void selectComboValue(JComboBox<String> combo, String value) {
+        if (combo == null || value == null || value.isBlank()) {
+            return;
+        }
+        ComboBoxModel<String> model = combo.getModel();
+        for (int i = 0; i < model.getSize(); i++) {
+            String item = model.getElementAt(i);
+            if (value.equalsIgnoreCase(item)) {
+                combo.setSelectedIndex(i);
+                return;
+            }
+        }
     }
 
     private JCheckBox check(String text) {
@@ -292,5 +347,16 @@ public class SettingsPanel extends JPanel {
         b.setFocusPainted(false);
         return b;
     }
-}
 
+    private static class PasswordChangeResult {
+        private final boolean success;
+        private final String message;
+
+        private PasswordChangeResult(boolean success, String message) {
+            this.success = success;
+            this.message = message == null || message.isBlank()
+                    ? "Incorrect current password"
+                    : message;
+        }
+    }
+}

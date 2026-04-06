@@ -1,68 +1,27 @@
 package dao;
 
 import util.DBConnectionUtil;
+import util.SchemaCache;
 
 import java.sql.*;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 public class TicketDAO {
 
-    private final Map<String, Boolean> tableCache = new HashMap<>();
-    private final Map<String, Boolean> columnCache = new HashMap<>();
-
     private boolean tableExists(String tableName) {
-        if (tableCache.containsKey(tableName)) return tableCache.get(tableName);
-
-        String sql =
-                "SELECT 1 FROM information_schema.tables " +
-                "WHERE table_schema = DATABASE() AND table_name = ? LIMIT 1";
-        try (Connection con = DBConnectionUtil.getConnection();
-             PreparedStatement ps = con.prepareStatement(sql)) {
-            ps.setString(1, tableName);
-            try (ResultSet rs = ps.executeQuery()) {
-                boolean exists = rs.next();
-                tableCache.put(tableName, exists);
-                return exists;
-            }
-        } catch (Exception e) {
-            tableCache.put(tableName, false);
-            return false;
-        }
+        return SchemaCache.tableExists(tableName);
     }
 
     private boolean columnExists(String tableName, String columnName) {
-        String key = tableName + "." + columnName;
-        if (columnCache.containsKey(key)) return columnCache.get(key);
-
-        String sql =
-                "SELECT 1 FROM information_schema.columns " +
-                "WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ? LIMIT 1";
-        try (Connection con = DBConnectionUtil.getConnection();
-             PreparedStatement ps = con.prepareStatement(sql)) {
-            ps.setString(1, tableName);
-            ps.setString(2, columnName);
-            try (ResultSet rs = ps.executeQuery()) {
-                boolean exists = rs.next();
-                columnCache.put(key, exists);
-                return exists;
-            }
-        } catch (Exception e) {
-            columnCache.put(key, false);
-            return false;
-        }
+        return SchemaCache.columnExists(tableName, columnName);
     }
 
     private String firstExistingColumn(String table, String... candidates) {
-        for (String candidate : candidates) {
-            if (columnExists(table, candidate)) return candidate;
-        }
-        return null;
+        return SchemaCache.firstExistingColumn(table, candidates);
     }
 
-    /* ================= HELPER ================= */
+    
 
     private String[] buildRow(ResultSet rs) throws Exception {
 
@@ -76,7 +35,7 @@ public class TicketDAO {
         };
     }
 
-    /* ================= CREATE ================= */
+    
 
     public int createTicket(int bookingId,
                             int userId,
@@ -93,7 +52,7 @@ public class TicketDAO {
              PreparedStatement ps =
                      con.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
 
-            ps.setInt(1, bookingId);   // 🔥 important link
+            ps.setInt(1, bookingId);   
             ps.setInt(2, userId);
             ps.setInt(3, scheduleId);
             ps.setString(4, seats);
@@ -112,7 +71,7 @@ public class TicketDAO {
         return -1;
     }
 
-    /* ================= USER TICKETS ================= */
+    
 
     public List<String[]> getTicketsByUser(int userId) {
 
@@ -174,7 +133,7 @@ public class TicketDAO {
         return list;
     }
 
-    /* ================= CANCEL ================= */
+    
 
     public boolean cancelTicket(int ticketId) {
 
@@ -195,7 +154,7 @@ public class TicketDAO {
         return false;
     }
 
-    /* ================= FULL DETAILS ================= */
+    
 
     public String[] getTicketFullDetails(int ticketId) {
 

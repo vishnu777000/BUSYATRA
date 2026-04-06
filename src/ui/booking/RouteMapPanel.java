@@ -3,11 +3,13 @@ package ui.booking;
 import config.UIConfig;
 import dao.RouteDAO;
 import util.BookingContext;
+import util.GeneratedRouteMapUtil;
+import util.RouteMapImageUtil;
 
 import javax.swing.*;
 import java.awt.*;
-import java.io.File;
-import java.net.URL;
+import java.util.List;
+import java.util.concurrent.ExecutionException;
 
 public class RouteMapPanel extends JPanel {
 
@@ -17,7 +19,10 @@ public class RouteMapPanel extends JPanel {
     private final String toStop;
     private final JLabel mapLabel = new JLabel("Loading route map...", SwingConstants.CENTER);
     private final JPanel timelineHolder = new JPanel(new BorderLayout());
+    private final Timer resizeDebounce;
     private ImageIcon currentMapIcon;
+    private int lastRenderedWidth = -1;
+    private int lastRenderedHeight = -1;
 
     public RouteMapPanel(int routeId) {
         this(routeId, BookingContext.scheduleId, BookingContext.fromStop, BookingContext.toStop);
@@ -28,6 +33,8 @@ public class RouteMapPanel extends JPanel {
         this.scheduleId = scheduleId;
         this.fromStop = fromStop == null ? "" : fromStop.trim();
         this.toStop = toStop == null ? "" : toStop.trim();
+        this.resizeDebounce = new Timer(70, e -> renderScaledMap());
+        this.resizeDebounce.setRepeats(false);
 
         setLayout(new BorderLayout(14, 14));
         setBackground(UIConfig.BACKGROUND);
@@ -38,7 +45,7 @@ public class RouteMapPanel extends JPanel {
         addComponentListener(new java.awt.event.ComponentAdapter() {
             @Override
             public void componentResized(java.awt.event.ComponentEvent e) {
-                renderScaledMap();
+                resizeDebounce.restart();
             }
         });
 
@@ -54,7 +61,10 @@ public class RouteMapPanel extends JPanel {
 
         mapLabel.setFont(UIConfig.FONT_SMALL);
         mapLabel.setForeground(UIConfig.TEXT_LIGHT);
-        mapLabel.setPreferredSize(new Dimension(500, 220));
+        mapLabel.setHorizontalTextPosition(SwingConstants.CENTER);
+        mapLabel.setVerticalTextPosition(SwingConstants.BOTTOM);
+        mapLabel.setPreferredSize(new Dimension(500, 240));
+        mapLabel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
 
         card.add(title, BorderLayout.NORTH);
         card.add(mapLabel, BorderLayout.CENTER);
@@ -88,8 +98,13 @@ public class RouteMapPanel extends JPanel {
         SwingWorker<RouteData, Void> worker = new SwingWorker<>() {
             @Override
             protected RouteData doInBackground() {
+                RouteDAO mapDao = new RouteDAO();
+                RouteDAO stopDao = new RouteDAO();
                 RouteData data = new RouteData();
-                data.mapPath = new RouteDAO().getRouteMap(routeId);
+                data.mapPath = mapDao.getRouteMap(routeId);
+                data.stopRows = stopDao.getStopsByRoute(routeId);
+                data.errorMessage = stopDao.hasLastError() ? stopDao.getLastError() : mapDao.getLastError();
+                data.hasError = stopDao.hasLastError() || mapDao.hasLastError();
                 return data;
             }
 
@@ -97,20 +112,28 @@ public class RouteMapPanel extends JPanel {
             protected void done() {
                 try {
                     RouteData data = get();
-                    renderMap(data.mapPath);
+                    renderMap(data.mapPath, data.stopRows, data.hasError ? data.errorMessage : null);
+                } catch (ExecutionException e) {
+                    showMapStatus(e.getCause() != null && e.getCause().getMessage() != null
+                            ? e.getCause().getMessage().trim()
+                            : "Unable to load map");
                 } catch (Exception e) {
-                    mapLabel.setText("Unable to load map");
+                    showMapStatus("Unable to load map");
                 }
             }
         };
         worker.execute();
     }
 
-    private void renderMap(String mapPath) {
-        currentMapIcon = resolveMapIcon(mapPath);
+    private void renderMap(String mapPath, List<String[]> stopRows, String errorMessage) {
+        currentMapIcon = RouteMapImageUtil.resolve(mapPath);
+        lastRenderedWidth = -1;
+        lastRenderedHeight = -1;
         if (currentMapIcon == null || currentMapIcon.getIconWidth() <= 0) {
-            mapLabel.setIcon(null);
-            mapLabel.setText("No route map uploaded");
+            currentMapIcon = GeneratedRouteMapUtil.buildFromRows(stopRows, fromStop, toStop, 640, 240);
+        }
+        if (currentMapIcon == null || currentMapIcon.getIconWidth() <= 0) {
+            showMapStatus((errorMessage == null || errorMessage.isBlank()) ? "No route map uploaded" : errorMessage);
             return;
         }
         renderScaledMap();
@@ -119,39 +142,28 @@ public class RouteMapPanel extends JPanel {
     private void renderScaledMap() {
         if (currentMapIcon == null || currentMapIcon.getIconWidth() <= 0) return;
 
-        int w = Math.max(360, Math.min(700, mapLabel.getWidth() > 0 ? mapLabel.getWidth() : 500));
-        int h = 220;
-        Image scaled = currentMapIcon.getImage().getScaledInstance(w, h, Image.SCALE_SMOOTH);
-        mapLabel.setIcon(new ImageIcon(scaled));
+        int w = Math.max(320, Math.min(700, mapLabel.getWidth() > 0 ? mapLabel.getWidth() - 16 : 500));
+        int h = Math.max(180, Math.min(280, mapLabel.getHeight() > 0 ? mapLabel.getHeight() - 16 : 240));
+        if (w == lastRenderedWidth && h == lastRenderedHeight) {
+            return;
+        }
+
+        lastRenderedWidth = w;
+        lastRenderedHeight = h;
+        mapLabel.setIcon(RouteMapImageUtil.scaleToFit(currentMapIcon, w, h));
         mapLabel.setText("");
     }
 
-    private ImageIcon resolveMapIcon(String mapPath) {
-        if (mapPath == null || mapPath.isBlank()) return null;
-
-        String path = mapPath.trim().replace("\\", "/");
-
-        if (path.startsWith("/")) {
-            URL url = getClass().getResource(path);
-            if (url != null) return new ImageIcon(url);
-        }
-
-        if (path.startsWith("resources/")) {
-            URL url = getClass().getResource("/" + path);
-            if (url != null) return new ImageIcon(url);
-        }
-
-        URL routeUrl = getClass().getResource("/resources/routes/" + path);
-        if (routeUrl != null) return new ImageIcon(routeUrl);
-
-        File file = new File(path);
-        if (file.exists()) {
-            return new ImageIcon(file.getAbsolutePath());
-        }
-        return null;
+    private void showMapStatus(String message) {
+        currentMapIcon = null;
+        mapLabel.setIcon(null);
+        mapLabel.setText(message == null || message.isBlank() ? "No route map uploaded" : message);
     }
 
     private static class RouteData {
         String mapPath;
+        String errorMessage;
+        boolean hasError;
+        List<String[]> stopRows;
     }
 }

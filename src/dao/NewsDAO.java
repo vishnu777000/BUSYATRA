@@ -10,31 +10,36 @@ import java.util.List;
 
 public class NewsDAO {
 
-    private volatile boolean adminNewsChecked = false;
+    private static final Object SCHEMA_LOCK = new Object();
+    private static volatile boolean adminNewsChecked = false;
 
     private void ensureAdminNewsTable() {
         if (adminNewsChecked) return;
 
-        String sql =
-                "CREATE TABLE IF NOT EXISTS admin_news (" +
-                "id INT PRIMARY KEY AUTO_INCREMENT," +
-                "message TEXT NOT NULL," +
-                "active TINYINT(1) NOT NULL DEFAULT 1," +
-                "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP" +
-                ")";
+        synchronized (SCHEMA_LOCK) {
+            if (adminNewsChecked) return;
 
-        try (
-                Connection con = DBConnectionUtil.getConnection();
-                PreparedStatement ps = con.prepareStatement(sql)
-        ) {
-            ps.executeUpdate();
-            adminNewsChecked = true;
-        } catch (Exception ignored) {
-            // Keep graceful fallback in read methods.
+            String sql =
+                    "CREATE TABLE IF NOT EXISTS admin_news (" +
+                    "id INT PRIMARY KEY AUTO_INCREMENT," +
+                    "message TEXT NOT NULL," +
+                    "active TINYINT(1) NOT NULL DEFAULT 1," +
+                    "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP" +
+                    ")";
+
+            try (
+                    Connection con = DBConnectionUtil.getConnection();
+                    PreparedStatement ps = con.prepareStatement(sql)
+            ) {
+                ps.executeUpdate();
+                adminNewsChecked = true;
+            } catch (Exception ignored) {
+
+            }
         }
     }
 
-    /* ================= HELPERS ================= */
+    
 
     private String[] buildActiveRow(ResultSet rs) throws Exception {
 
@@ -55,7 +60,7 @@ public class NewsDAO {
         };
     }
 
-    /* ================= ACTIVE ================= */
+    
 
     public List<String[]> getActiveNews() {
 
@@ -79,13 +84,13 @@ public class NewsDAO {
             }
 
         } catch (Exception e) {
-            // no-op: dashboard can render without news
+            
         }
 
         return list;
     }
 
-    /* ================= ALL ================= */
+    
 
     public List<String[]> getAllNews() {
 
@@ -108,13 +113,13 @@ public class NewsDAO {
             }
 
         } catch (Exception e) {
-            // no-op
+            
         }
 
         return list;
     }
 
-    /* ================= ADD ================= */
+    
 
     public boolean addNews(String message) {
         ensureAdminNewsTable();
@@ -133,13 +138,13 @@ public class NewsDAO {
             return ps.executeUpdate() > 0;
 
         } catch (Exception e) {
-            // no-op
+            
         }
 
         return false;
     }
 
-    /* ================= STATUS ================= */
+    
 
     public boolean setNewsStatus(int id, boolean active) {
         ensureAdminNewsTable();
@@ -158,13 +163,13 @@ public class NewsDAO {
             return ps.executeUpdate() > 0;
 
         } catch (Exception e) {
-            // no-op
+            
         }
 
         return false;
     }
 
-    /* ================= DELETE ================= */
+    
 
     public boolean deleteNews(int id) {
         ensureAdminNewsTable();
@@ -182,13 +187,13 @@ public class NewsDAO {
             return ps.executeUpdate() > 0;
 
         } catch (Exception e) {
-            // no-op
+            
         }
 
         return false;
     }
 
-    /* ================= LATEST ================= */
+    
 
     public String getLatestNews() {
         ensureAdminNewsTable();
@@ -209,7 +214,7 @@ public class NewsDAO {
             }
 
         } catch (Exception e) {
-            // no-op
+            
         }
 
         return "No announcements";

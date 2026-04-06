@@ -77,7 +77,7 @@ public class ComplaintDAO {
         ) {
             if (rs.next()) return rs.getInt(1);
         } catch (Exception ignored) {
-            // graceful fallback
+            
         }
         return 0;
     }
@@ -147,7 +147,7 @@ public class ComplaintDAO {
                 }
             }
         } catch (Exception ignored) {
-            // graceful fallback
+            
         }
 
         return list;
@@ -190,7 +190,7 @@ public class ComplaintDAO {
             }
 
         } catch (Exception ignored) {
-            // graceful fallback
+            
         }
 
         return list;
@@ -207,7 +207,7 @@ public class ComplaintDAO {
             sql = "UPDATE complaints SET status=?, admin_reply=? WHERE id=?";
         } else {
             sql = "UPDATE support_messages SET status=?, reply=? WHERE id=?";
-            // support_messages supports OPEN/CLOSED only
+            
             if ("RESOLVED".equalsIgnoreCase(status) || "CLOSED".equalsIgnoreCase(status)) {
                 mappedStatus = "CLOSED";
             } else {

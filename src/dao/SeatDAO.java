@@ -1,69 +1,55 @@
 package dao;
 
+import config.DBConfig;
 import util.DBConnectionUtil;
+import util.SchemaCache;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
-import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Map;
 import java.util.Set;
 
 public class SeatDAO {
 
-    private final Map<String, Boolean> tableCache = new HashMap<>();
-    private final Map<String, Boolean> columnCache = new HashMap<>();
+    private final ThreadLocal<String> lastError = new ThreadLocal<>();
+
+    public void clearLastError() {
+        lastError.remove();
+    }
+
+    public String getLastError() {
+        String message = lastError.get();
+        return message == null ? "" : message;
+    }
+
+    public boolean hasLastError() {
+        String message = lastError.get();
+        return message != null && !message.isBlank();
+    }
+
+    private void setLastError(Throwable error) {
+        lastError.set(DBConfig.userFriendlyMessage(error));
+    }
+
+    private void setLastError(String message) {
+        if (message == null || message.isBlank()) {
+            lastError.remove();
+            return;
+        }
+        lastError.set(message);
+    }
 
     private boolean tableExists(String tableName) {
-        if (tableCache.containsKey(tableName)) return tableCache.get(tableName);
-
-        String sql =
-                "SELECT 1 FROM information_schema.tables " +
-                "WHERE table_schema = DATABASE() AND table_name = ? LIMIT 1";
-
-        try (Connection con = DBConnectionUtil.getConnection();
-             PreparedStatement ps = con.prepareStatement(sql)) {
-            ps.setString(1, tableName);
-            try (ResultSet rs = ps.executeQuery()) {
-                boolean exists = rs.next();
-                tableCache.put(tableName, exists);
-                return exists;
-            }
-        } catch (Exception e) {
-            tableCache.put(tableName, false);
-            return false;
-        }
+        return SchemaCache.tableExists(tableName);
     }
 
     private boolean columnExists(String tableName, String columnName) {
-        String key = tableName + "." + columnName;
-        if (columnCache.containsKey(key)) return columnCache.get(key);
-
-        String sql =
-                "SELECT 1 FROM information_schema.columns " +
-                "WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ? LIMIT 1";
-
-        try (Connection con = DBConnectionUtil.getConnection();
-             PreparedStatement ps = con.prepareStatement(sql)) {
-            ps.setString(1, tableName);
-            ps.setString(2, columnName);
-            try (ResultSet rs = ps.executeQuery()) {
-                boolean exists = rs.next();
-                columnCache.put(key, exists);
-                return exists;
-            }
-        } catch (Exception e) {
-            columnCache.put(key, false);
-            return false;
-        }
+        return SchemaCache.columnExists(tableName, columnName);
     }
 
     private String firstExistingColumn(String table, String... candidates) {
-        for (String candidate : candidates) {
-            if (columnExists(table, candidate)) return candidate;
-        }
-        return null;
+        return SchemaCache.firstExistingColumn(table, candidates);
     }
 
     private int getInt(String sql, int scheduleId) {
@@ -74,7 +60,8 @@ public class SeatDAO {
                 if (rs.next()) return rs.getInt(1);
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            setLastError(e);
+            DBConnectionUtil.logIfUnexpected(e);
         }
         return 0;
     }
@@ -87,12 +74,14 @@ public class SeatDAO {
                 if (rs.next()) return rs.getDouble(1);
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            setLastError(e);
+            DBConnectionUtil.logIfUnexpected(e);
         }
         return 0;
     }
 
     public Set<String> getUnavailableSeats(int scheduleId, int newFrom, int newTo) {
+        clearLastError();
         Set<String> set = new HashSet<>();
 
         if (newFrom >= newTo) return set;
@@ -100,11 +89,13 @@ public class SeatDAO {
         boolean hasBookedSeats = tableExists("booked_seats");
         if (!hasBookings && !hasBookedSeats) return set;
 
+        String bookingScheduleCol = hasBookings ? firstExistingColumn("bookings", "schedule_id", "schedule", "scheduleid", "sid") : null;
         String bookingSeatCol = hasBookings ? firstExistingColumn("bookings", "seat_no", "seat_number", "seat") : null;
         String bookingFromOrderCol = hasBookings ? firstExistingColumn("bookings", "from_order", "from_stop_order", "src_order") : null;
         String bookingToOrderCol = hasBookings ? firstExistingColumn("bookings", "to_order", "to_stop_order", "dst_order") : null;
         String bookingStatusCol = hasBookings ? firstExistingColumn("bookings", "status") : null;
 
+        String holdScheduleCol = hasBookedSeats ? firstExistingColumn("booked_seats", "schedule_id", "schedule", "scheduleid", "sid") : null;
         String holdSeatCol = hasBookedSeats ? firstExistingColumn("booked_seats", "seat_no", "seat_number", "seat") : null;
         String holdFromOrderCol = hasBookedSeats ? firstExistingColumn("booked_seats", "from_order", "from_stop_order", "src_order") : null;
         String holdToOrderCol = hasBookedSeats ? firstExistingColumn("booked_seats", "to_order", "to_stop_order", "dst_order") : null;
@@ -112,12 +103,12 @@ public class SeatDAO {
         boolean hasSegmentCols = (bookingFromOrderCol != null && bookingToOrderCol != null)
                 || (holdFromOrderCol != null && holdToOrderCol != null);
 
-        if (hasBookings && bookingSeatCol != null) {
+        if (hasBookings && bookingScheduleCol != null && bookingSeatCol != null) {
             String sql =
                     "SELECT " + bookingSeatCol + " AS seat_value" +
                     (bookingFromOrderCol != null ? ", " + bookingFromOrderCol + " AS from_ord" : "") +
                     (bookingToOrderCol != null ? ", " + bookingToOrderCol + " AS to_ord" : "") +
-                    " FROM bookings WHERE schedule_id=?" +
+                    " FROM bookings WHERE " + bookingScheduleCol + "=?" +
                     (bookingStatusCol != null ? " AND " + bookingStatusCol + "='CONFIRMED'" : "");
 
             try (Connection con = DBConnectionUtil.getConnection();
@@ -130,7 +121,7 @@ public class SeatDAO {
                         if (seatNo == null || seatNo.isBlank()) continue;
 
                         if (bookingFromOrderCol == null || bookingToOrderCol == null) {
-                            // Avoid blocking whole seat map when segment columns are missing but we have booked_seats segments.
+                            
                             if (!hasSegmentCols) {
                                 set.add(seatNo);
                             }
@@ -146,16 +137,17 @@ public class SeatDAO {
                     }
                 }
             } catch (Exception e) {
-                e.printStackTrace();
+                setLastError(e);
+                DBConnectionUtil.logIfUnexpected(e);
             }
         }
 
-        if (hasBookedSeats && holdSeatCol != null) {
+        if (hasBookedSeats && holdScheduleCol != null && holdSeatCol != null) {
             String sql =
                     "SELECT " + holdSeatCol + " AS seat_value" +
                     (holdFromOrderCol != null ? ", " + holdFromOrderCol + " AS from_ord" : "") +
                     (holdToOrderCol != null ? ", " + holdToOrderCol + " AS to_ord" : "") +
-                    " FROM booked_seats WHERE schedule_id=?";
+                    " FROM booked_seats WHERE " + holdScheduleCol + "=?";
 
             try (Connection con = DBConnectionUtil.getConnection();
                  PreparedStatement ps = con.prepareStatement(sql)) {
@@ -180,7 +172,8 @@ public class SeatDAO {
                     }
                 }
             } catch (Exception e) {
-                e.printStackTrace();
+                setLastError(e);
+                DBConnectionUtil.logIfUnexpected(e);
             }
         }
 
@@ -188,8 +181,14 @@ public class SeatDAO {
     }
 
     public int getTotalSeatsBySchedule(int scheduleId) {
+        clearLastError();
         String seatsCol = firstExistingColumn("buses", "total_seats", "seat_count", "seats");
-        if (seatsCol == null) return 0;
+        if (seatsCol == null) {
+            if (!hasLastError()) {
+                setLastError("Bus seat configuration column is missing in the database.");
+            }
+            return 0;
+        }
 
         String sql =
                 "SELECT b." + seatsCol + " " +
@@ -201,8 +200,14 @@ public class SeatDAO {
     }
 
     public double getFareBySchedule(int scheduleId) {
+        clearLastError();
         String fareCol = firstExistingColumn("buses", "fare_multiplier", "multiplier", "fare");
-        if (fareCol == null) return 0;
+        if (fareCol == null) {
+            if (!hasLastError()) {
+                setLastError("Bus fare column is missing in the database.");
+            }
+            return 0;
+        }
 
         String sql =
                 "SELECT b." + fareCol + " " +
@@ -214,15 +219,17 @@ public class SeatDAO {
     }
 
     public Set<String> getBookedSeats(int scheduleId) {
+        clearLastError();
         Set<String> set = new HashSet<>();
         if (!tableExists("bookings")) return set;
 
+        String scheduleCol = firstExistingColumn("bookings", "schedule_id", "schedule", "scheduleid", "sid");
         String seatCol = firstExistingColumn("bookings", "seat_no", "seat_number", "seat");
         String statusCol = firstExistingColumn("bookings", "status");
-        if (seatCol == null) return set;
+        if (scheduleCol == null || seatCol == null) return set;
 
         String sql =
-                "SELECT " + seatCol + " AS seat_value FROM bookings WHERE schedule_id=?" +
+                "SELECT " + seatCol + " AS seat_value FROM bookings WHERE " + scheduleCol + "=?" +
                 (statusCol != null ? " AND " + statusCol + "='CONFIRMED'" : "");
 
         try (Connection con = DBConnectionUtil.getConnection();
@@ -237,7 +244,8 @@ public class SeatDAO {
                 }
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            setLastError(e);
+            DBConnectionUtil.logIfUnexpected(e);
         }
 
         return set;

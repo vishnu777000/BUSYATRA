@@ -11,7 +11,7 @@ public class Bus {
     private String busNumber;
     private String status;
 
-    /* ================= CONSTRUCTORS ================= */
+    
 
     public Bus() {}
 
@@ -39,7 +39,7 @@ public class Bus {
         this.status = status;
     }
 
-    /* ================= GETTERS ================= */
+    
 
     public int getId() { return id; }
 
@@ -57,7 +57,7 @@ public class Bus {
 
     public String getStatus() { return status; }
 
-    /* ================= SETTERS ================= */
+    
 
     public void setId(int id) { this.id = id; }
 
@@ -75,9 +75,9 @@ public class Bus {
 
     public void setStatus(String status) { this.status = status; }
 
-    /* ================= UI SUPPORT ================= */
+    
 
-    // 🔥 JTable row (Admin panel)
+    
     public String[] toRow() {
         return new String[]{
                 String.valueOf(id),
@@ -89,12 +89,12 @@ public class Bus {
         };
     }
 
-    // 🔥 Short display (Search UI)
+    
     public String getDisplayName() {
         return operator + " (" + busType + ")";
     }
 
-    /* ================= DEBUG ================= */
+    
 
     @Override
     public String toString() {

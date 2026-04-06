@@ -3,7 +3,11 @@ package util;
 public interface Refreshable {
 
     default void refreshData() {
-        // default empty implementation
+        
+    }
+
+    default boolean refreshOnFirstShow() {
+        return true;
     }
 
 }

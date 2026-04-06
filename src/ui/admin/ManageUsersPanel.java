@@ -3,10 +3,12 @@ package ui.admin;
 import config.UIConfig;
 import dao.UserDAO;
 import util.Refreshable;
+import util.DBConnectionUtil;
 
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
+import java.sql.Connection;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -14,6 +16,7 @@ public class ManageUsersPanel extends JPanel implements Refreshable {
 
     private JTable table;
     private DefaultTableModel model;
+    private JLabel loadStatusLabel;
     private JTextField searchField;
     private JLabel pageInfoLabel;
     private JButton prevBtn;
@@ -23,12 +26,17 @@ public class ManageUsersPanel extends JPanel implements Refreshable {
     private JTextField emailField;
     private JPasswordField passField;
     private JComboBox<String> roleBox;
+    private JButton addBtn;
+    private JButton updateBtn;
+    private JButton blockBtn;
+    private JButton unblockBtn;
 
     private int selectedUserId = -1;
     private List<String[]> allUsers = new ArrayList<>();
     private List<String[]> filteredUsers = new ArrayList<>();
     private int currentPage = 1;
     private static final int PAGE_SIZE = 25;
+    private final UserDAO userDAO = new UserDAO();
 
     public ManageUsersPanel() {
 
@@ -122,10 +130,17 @@ public class ManageUsersPanel extends JPanel implements Refreshable {
         table.getSelectionModel().addListSelectionListener(e -> fillForm());
 
         JScrollPane sp = new JScrollPane(table);
+        UIConfig.styleScroll(sp);
+        sp.setColumnHeaderView(table.getTableHeader());
+
+        loadStatusLabel = new JLabel(" ");
+        loadStatusLabel.setFont(UIConfig.FONT_SMALL);
+        loadStatusLabel.setForeground(UIConfig.TEXT_LIGHT);
 
         JPanel card = new JPanel(new BorderLayout());
         UIConfig.styleCard(card);
         card.add(sp,BorderLayout.CENTER);
+        card.add(loadStatusLabel, BorderLayout.SOUTH);
 
         return card;
     }
@@ -147,6 +162,7 @@ public class ManageUsersPanel extends JPanel implements Refreshable {
         passField.setBorder(BorderFactory.createTitledBorder("Password"));
 
         roleBox = new JComboBox<>(new String[]{"USER","ADMIN","MANAGER","CLERK"});
+        UIConfig.styleCombo(roleBox);
 
         JPanel fields = new JPanel(new GridLayout(4,1,10,10));
         fields.setOpaque(false);
@@ -155,10 +171,10 @@ public class ManageUsersPanel extends JPanel implements Refreshable {
         fields.add(passField);
         fields.add(roleBox);
 
-        JButton addBtn = btn("Add");
-        JButton updateBtn = btn("Update");
-        JButton blockBtn = btn("Block");
-        JButton unblockBtn = btn("Unblock");
+        addBtn = btn("Add");
+        updateBtn = btn("Update");
+        blockBtn = btn("Block");
+        unblockBtn = btn("Unblock");
 
         UIConfig.primaryBtn(addBtn);
         UIConfig.successBtn(updateBtn);
@@ -200,24 +216,46 @@ public class ManageUsersPanel extends JPanel implements Refreshable {
     private void loadUsers(){
 
         model.setRowCount(0);
+        allUsers = new ArrayList<>();
+        filteredUsers = new ArrayList<>();
+        setLoadStatus("Loading users...");
         setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
 
         SwingWorker<List<String[]>, Void> worker = new SwingWorker<>() {
             @Override
             protected List<String[]> doInBackground() {
-                return new UserDAO().getAllUsers();
+                try (Connection ignored = DBConnectionUtil.getConnection()) {
+                    
+                } catch (Exception e) {
+                    throw new RuntimeException(DBConnectionUtil.userMessage(e), e);
+                }
+                return userDAO.getAllUsers();
             }
 
             @Override
             protected void done() {
                 try {
                     List<String[]> users = get();
+                    String daoError = userDAO.getLastError();
+                    if ((users == null || users.isEmpty())
+                            && daoError != null
+                            && !daoError.isBlank()
+                            && !"Unknown registration/login error".equals(daoError)) {
+                        setLoadStatus(daoError);
+                        refreshTablePage();
+                        return;
+                    }
                     allUsers = users == null ? new ArrayList<>() : new ArrayList<>(users);
                     applyFilter();
+                    setLoadStatus(allUsers.isEmpty()
+                            ? "No users found"
+                            : "Loaded " + allUsers.size() + " users");
                 } catch (Exception e) {
-                    JOptionPane.showMessageDialog(ManageUsersPanel.this,"Load failed");
+                    String message = DBConnectionUtil.userMessage(e);
+                    setLoadStatus(message);
+                    JOptionPane.showMessageDialog(ManageUsersPanel.this, message, "Manage Users", JOptionPane.ERROR_MESSAGE);
                 }
-                setCursor(Cursor.getDefaultCursor());
+                setActionBusy(false, loadStatusLabel == null ? " " : loadStatusLabel.getText());
             }
         };
 
@@ -275,6 +313,61 @@ public class ManageUsersPanel extends JPanel implements Refreshable {
         nextBtn.setEnabled(currentPage < pages);
     }
 
+    private void setLoadStatus(String message) {
+        if (loadStatusLabel != null) {
+            loadStatusLabel.setText(message == null || message.isBlank() ? " " : message);
+        }
+    }
+
+    private void setActionBusy(boolean busy, String message) {
+        setLoadStatus(message);
+        setCursor(Cursor.getPredefinedCursor(busy ? Cursor.WAIT_CURSOR : Cursor.DEFAULT_CURSOR));
+        if (searchField != null) searchField.setEnabled(!busy);
+        if (table != null) table.setEnabled(!busy);
+        if (prevBtn != null) prevBtn.setEnabled(!busy && currentPage > 1);
+        if (nextBtn != null) nextBtn.setEnabled(!busy && currentPage < totalPages());
+        if (addBtn != null) addBtn.setEnabled(!busy);
+        if (updateBtn != null) updateBtn.setEnabled(!busy);
+        if (blockBtn != null) blockBtn.setEnabled(!busy);
+        if (unblockBtn != null) unblockBtn.setEnabled(!busy);
+    }
+
+    private void runUserMutation(String busyMessage, String successMessage, UserMutation mutation, boolean clearForm) {
+        setActionBusy(true, busyMessage);
+
+        SwingWorker<UserMutationResult, Void> worker = new SwingWorker<>() {
+            @Override
+            protected UserMutationResult doInBackground() {
+                UserDAO actionDao = new UserDAO();
+                boolean ok = mutation.run(actionDao);
+                return new UserMutationResult(ok, actionDao.getLastError());
+            }
+
+            @Override
+            protected void done() {
+                try {
+                    UserMutationResult result = get();
+                    if (!result.success) {
+                        setActionBusy(false, result.message);
+                        JOptionPane.showMessageDialog(ManageUsersPanel.this, result.message);
+                        return;
+                    }
+
+                    if (clearForm) {
+                        clear();
+                    }
+                    loadUsers();
+                    JOptionPane.showMessageDialog(ManageUsersPanel.this, successMessage);
+                } catch (Exception e) {
+                    setActionBusy(false, "Action failed");
+                    JOptionPane.showMessageDialog(ManageUsersPanel.this, "Action failed");
+                }
+            }
+        };
+
+        worker.execute();
+    }
+
     private void fillForm(){
 
         int row = table.getSelectedRow();
@@ -295,14 +388,12 @@ public class ManageUsersPanel extends JPanel implements Refreshable {
             String pass = new String(passField.getPassword());
             String role = roleBox.getSelectedItem().toString();
 
-            boolean ok = new UserDAO().addUser(name,email,pass,role);
-
-            if(ok){
-                clear();
-                loadUsers();
-                JOptionPane.showMessageDialog(this,"Added");
-            }
-
+            runUserMutation(
+                    "Adding user...",
+                    "User added",
+                    dao -> dao.addUser(name, email, pass, role),
+                    true
+            );
         }catch(Exception e){
             JOptionPane.showMessageDialog(this,"Error");
         }
@@ -317,15 +408,12 @@ public class ManageUsersPanel extends JPanel implements Refreshable {
 
         try{
             String role = roleBox.getSelectedItem().toString();
-            boolean ok = new UserDAO().updateUserRole(selectedUserId, role);
-
-            if(ok){
-                loadUsers();
-                JOptionPane.showMessageDialog(this,"Role updated");
-            } else {
-                JOptionPane.showMessageDialog(this,"Update failed");
-            }
-
+            runUserMutation(
+                    "Updating user role...",
+                    "Role updated",
+                    dao -> dao.updateUserRole(selectedUserId, role),
+                    false
+            );
         }catch(Exception e){
             JOptionPane.showMessageDialog(this,"Error");
         }
@@ -338,12 +426,12 @@ public class ManageUsersPanel extends JPanel implements Refreshable {
             return;
         }
 
-        boolean ok = new UserDAO().updateUserStatus(selectedUserId,status);
-
-        if(ok){
-            loadUsers();
-            JOptionPane.showMessageDialog(this,"Updated");
-        }
+        runUserMutation(
+                "Updating user status...",
+                "User updated",
+                dao -> dao.updateUserStatus(selectedUserId, status),
+                false
+        );
     }
 
     private void clear(){
@@ -359,5 +447,27 @@ public class ManageUsersPanel extends JPanel implements Refreshable {
     public void refreshData(){
         clear();
         loadUsers();
+    }
+
+    @Override
+    public boolean refreshOnFirstShow() {
+        return false;
+    }
+
+    @FunctionalInterface
+    private interface UserMutation {
+        boolean run(UserDAO dao);
+    }
+
+    private static class UserMutationResult {
+        private final boolean success;
+        private final String message;
+
+        private UserMutationResult(boolean success, String message) {
+            this.success = success;
+            this.message = message == null || message.isBlank() || "Unknown registration/login error".equals(message)
+                    ? "Action failed"
+                    : message;
+        }
     }
 }

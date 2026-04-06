@@ -6,6 +6,7 @@ import dao.SeatLockDAO;
 import ui.common.MainFrame;
 import ui.common.SeatButton;
 import util.BookingContext;
+import util.DBConnectionUtil;
 import util.Refreshable;
 import util.Session;
 
@@ -25,12 +26,16 @@ public class SeatSelectionPanel extends JPanel implements Refreshable {
 
     private Set<String> unavailableSeats = new HashSet<>();
     private final Set<String> selectedSeats = new HashSet<>();
+    private final Set<String> seatOperationsInProgress = new HashSet<>();
 
     private static final int MAX_SEATS = 6;
 
     private JLabel payableLabel;
     private JLabel selectedLabel;
     private JLabel loadingLabel;
+    private JButton proceedButton;
+    private String seatLoadErrorMessage = "";
+    private boolean seatLoadFailed = false;
 
     private final Color AVAILABLE = new Color(232, 245, 233);
     private final Color SELECTED = new Color(0, 150, 136);
@@ -112,7 +117,7 @@ public class SeatSelectionPanel extends JPanel implements Refreshable {
                 BorderLayout.NORTH
         );
 
-        panel.add(scrollSeats(), BorderLayout.CENTER);
+        panel.add(seatLoadFailed ? seatLoadFailurePanel() : scrollSeats(), BorderLayout.CENTER);
         return panel;
     }
 
@@ -134,6 +139,41 @@ public class SeatSelectionPanel extends JPanel implements Refreshable {
         sp.getViewport().setBackground(UIConfig.BACKGROUND);
         sp.getVerticalScrollBar().setUnitIncrement(16);
         return sp;
+    }
+
+    private JComponent seatLoadFailurePanel() {
+        JPanel panel = new JPanel(new GridBagLayout());
+        panel.setOpaque(false);
+
+        JPanel card = new JPanel();
+        card.setLayout(new BoxLayout(card, BoxLayout.Y_AXIS));
+        UIConfig.styleCard(card);
+        card.setPreferredSize(new Dimension(420, 180));
+
+        JLabel message = new JLabel(
+                seatLoadErrorMessage == null || seatLoadErrorMessage.isBlank()
+                        ? "Unable to load seats right now."
+                        : seatLoadErrorMessage,
+                SwingConstants.CENTER
+        );
+        message.setAlignmentX(Component.CENTER_ALIGNMENT);
+        message.setFont(UIConfig.FONT_NORMAL);
+        message.setForeground(UIConfig.TEXT_LIGHT);
+
+        JButton retryButton = new JButton("Retry");
+        retryButton.setAlignmentX(Component.CENTER_ALIGNMENT);
+        retryButton.setPreferredSize(new Dimension(140, 40));
+        UIConfig.primaryBtn(retryButton);
+        retryButton.addActionListener(e -> refreshData());
+
+        card.add(Box.createVerticalGlue());
+        card.add(message);
+        card.add(Box.createVerticalStrut(18));
+        card.add(retryButton);
+        card.add(Box.createVerticalGlue());
+
+        panel.add(card);
+        return panel;
     }
 
     private JPanel seatLayout() {
@@ -271,58 +311,104 @@ public class SeatSelectionPanel extends JPanel implements Refreshable {
     }
 
     private void toggleSeat(SeatButton btn, String seatNo) {
-        if (selectedSeats.contains(seatNo)) {
-            selectedSeats.remove(seatNo);
-            BookingContext.removeSeat(seatNo);
-
-            seatLockDAO.releaseSeatLock(
-                    BookingContext.scheduleId,
-                    seatNo,
-                    Session.userId
-            );
-
-            btn.setState(SeatButton.State.AVAILABLE);
-
-        } else {
-            if (selectedSeats.size() >= MAX_SEATS) {
-                JOptionPane.showMessageDialog(this, "Max 6 seats allowed");
-                return;
-            }
-
-            if (seatLockDAO.isSeatLocked(
-                    BookingContext.scheduleId,
-                    seatNo,
-                    BookingContext.fromOrder,
-                    BookingContext.toOrder
-            )) {
-                JOptionPane.showMessageDialog(this, "Seat already locked by another user");
-                return;
-            }
-
-            boolean locked = seatLockDAO.lockSeat(
-                    BookingContext.scheduleId,
-                    seatNo,
-                    Session.userId,
-                    BookingContext.fromOrder,
-                    BookingContext.toOrder
-            );
-
-            if (!locked) {
-                JOptionPane.showMessageDialog(this, "Unable to hold seat right now");
-                return;
-            }
-
-            selectedSeats.add(seatNo);
-            BookingContext.addSeat(seatNo);
-            btn.setState(SeatButton.State.SELECTED);
+        if (seatOperationsInProgress.contains(seatNo)) {
+            return;
         }
 
-        updatePayable();
+        boolean removingSeat = selectedSeats.contains(seatNo);
+        if (!removingSeat && selectedSeats.size() >= MAX_SEATS) {
+            JOptionPane.showMessageDialog(this, "Max 6 seats allowed");
+            return;
+        }
+
+        seatOperationsInProgress.add(seatNo);
+        btn.setEnabled(false);
+        setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
+
+        SwingWorker<SeatActionResult, Void> worker = new SwingWorker<>() {
+            @Override
+            protected SeatActionResult doInBackground() {
+                seatLockDAO.clearLastError();
+
+                if (removingSeat) {
+                    boolean released = seatLockDAO.releaseSeatLock(
+                            BookingContext.scheduleId,
+                            seatNo,
+                            Session.userId
+                    );
+                    if (!released && seatLockDAO.hasLastError()) {
+                        return SeatActionResult.fail(seatLockDAO.getLastError());
+                    }
+                    return SeatActionResult.success(false);
+                }
+
+                if (seatLockDAO.isSeatLocked(
+                        BookingContext.scheduleId,
+                        seatNo,
+                        BookingContext.fromOrder,
+                        BookingContext.toOrder
+                )) {
+                    if (seatLockDAO.hasLastError()) {
+                        return SeatActionResult.fail(seatLockDAO.getLastError());
+                    }
+                    return SeatActionResult.fail("Seat already locked by another user");
+                }
+
+                boolean locked = seatLockDAO.lockSeat(
+                        BookingContext.scheduleId,
+                        seatNo,
+                        Session.userId,
+                        BookingContext.fromOrder,
+                        BookingContext.toOrder
+                );
+
+                if (!locked) {
+                    if (seatLockDAO.hasLastError()) {
+                        return SeatActionResult.fail(seatLockDAO.getLastError());
+                    }
+                    return SeatActionResult.fail("Unable to hold seat right now");
+                }
+
+                return SeatActionResult.success(true);
+            }
+
+            @Override
+            protected void done() {
+                try {
+                    SeatActionResult result = get();
+                    if (result.ok) {
+                        if (result.selected) {
+                            selectedSeats.add(seatNo);
+                            BookingContext.addSeat(seatNo);
+                            btn.setState(SeatButton.State.SELECTED);
+                        } else {
+                            selectedSeats.remove(seatNo);
+                            BookingContext.removeSeat(seatNo);
+                            btn.setState(SeatButton.State.AVAILABLE);
+                        }
+                        updatePayable();
+                    } else {
+                        JOptionPane.showMessageDialog(SeatSelectionPanel.this, result.message);
+                    }
+                } catch (Exception e) {
+                    JOptionPane.showMessageDialog(
+                            SeatSelectionPanel.this,
+                            DBConnectionUtil.userMessage(e)
+                    );
+                } finally {
+                    seatOperationsInProgress.remove(seatNo);
+                    btn.setEnabled(!unavailableSeats.contains(seatNo));
+                    setCursor(Cursor.getDefaultCursor());
+                }
+            }
+        };
+        worker.execute();
     }
 
     private void updatePayable() {
         selectedLabel.setText("Seats : " + BookingContext.getSeatListString());
         payableLabel.setText("Total : INR " + String.format("%.2f", BookingContext.getFinalAmount()));
+        updateProceedButton();
     }
 
     private JComponent bottomBar() {
@@ -341,10 +427,10 @@ public class SeatSelectionPanel extends JPanel implements Refreshable {
         left.add(selectedLabel);
         left.add(payableLabel);
 
-        JButton proceed = new JButton("Proceed to Payment");
-        UIConfig.primaryBtn(proceed);
+        proceedButton = new JButton("Proceed to Payment");
+        UIConfig.primaryBtn(proceedButton);
 
-        proceed.addActionListener(e -> {
+        proceedButton.addActionListener(e -> {
             if (selectedSeats.isEmpty()) {
                 JOptionPane.showMessageDialog(this, "Select at least one seat");
                 return;
@@ -353,15 +439,26 @@ public class SeatSelectionPanel extends JPanel implements Refreshable {
         });
 
         panel.add(left, BorderLayout.WEST);
-        panel.add(proceed, BorderLayout.EAST);
+        panel.add(proceedButton, BorderLayout.EAST);
+
+        updateProceedButton();
 
         return panel;
+    }
+
+    private void updateProceedButton() {
+        if (proceedButton != null) {
+            proceedButton.setEnabled(!seatLoadFailed && !selectedSeats.isEmpty());
+        }
     }
 
     @Override
     public void refreshData() {
         BookingContext.clearSeats();
         selectedSeats.clear();
+        seatOperationsInProgress.clear();
+        seatLoadErrorMessage = "";
+        seatLoadFailed = false;
         removeAll();
         add(header(), BorderLayout.NORTH);
         add(loadingCenter(), BorderLayout.CENTER);
@@ -373,20 +470,24 @@ public class SeatSelectionPanel extends JPanel implements Refreshable {
             @Override
             protected SeatLoadResult doInBackground() {
                 SeatLoadResult result = new SeatLoadResult();
+                seatDAO.clearLastError();
+                seatLockDAO.clearLastError();
                 seatLockDAO.clearExpiredLocks();
                 result.unavailable = seatDAO.getUnavailableSeats(
                         BookingContext.scheduleId,
                         BookingContext.fromOrder,
                         BookingContext.toOrder
                 );
-                result.unavailable.addAll(
-                        seatLockDAO.getLockedSeats(
-                                BookingContext.scheduleId,
-                                BookingContext.fromOrder,
-                                BookingContext.toOrder
-                        )
+                result.locked = seatLockDAO.getLockedSeats(
+                        BookingContext.scheduleId,
+                        BookingContext.fromOrder,
+                        BookingContext.toOrder
                 );
                 result.totalSeats = seatDAO.getTotalSeatsBySchedule(BookingContext.scheduleId);
+                result.errorMessage = firstNonBlank(
+                        seatLockDAO.getLastError(),
+                        seatDAO.getLastError()
+                );
                 return result;
             }
 
@@ -394,17 +495,27 @@ public class SeatSelectionPanel extends JPanel implements Refreshable {
             protected void done() {
                 try {
                     SeatLoadResult result = get();
-                    unavailableSeats = result.unavailable;
+                    seatLoadErrorMessage = result.errorMessage == null ? "" : result.errorMessage.trim();
+                    seatLoadFailed = !seatLoadErrorMessage.isBlank();
                     BookingContext.totalSeats = result.totalSeats;
+                    if (seatLoadFailed) {
+                        unavailableSeats = new HashSet<>();
+                    } else {
+                        unavailableSeats = result.unavailable;
+                        unavailableSeats.addAll(result.locked);
+                    }
                 } catch (Exception e) {
                     unavailableSeats = new HashSet<>();
                     BookingContext.totalSeats = 0;
+                    seatLoadErrorMessage = DBConnectionUtil.userMessage(e);
+                    seatLoadFailed = true;
                 }
 
                 removeAll();
                 add(header(), BorderLayout.NORTH);
                 add(centerPanel(), BorderLayout.CENTER);
                 add(bottomBar(), BorderLayout.SOUTH);
+                updatePayable();
                 revalidate();
                 repaint();
             }
@@ -412,8 +523,43 @@ public class SeatSelectionPanel extends JPanel implements Refreshable {
         worker.execute();
     }
 
+    private String firstNonBlank(String... values) {
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
+        }
+        return "";
+    }
+
     private static class SeatLoadResult {
         Set<String> unavailable = new HashSet<>();
+        Set<String> locked = new HashSet<>();
         int totalSeats;
+        String errorMessage = "";
+    }
+
+    private static class SeatActionResult {
+        boolean ok;
+        boolean selected;
+        String message;
+
+        private static SeatActionResult success(boolean selected) {
+            SeatActionResult result = new SeatActionResult();
+            result.ok = true;
+            result.selected = selected;
+            result.message = "";
+            return result;
+        }
+
+        private static SeatActionResult fail(String message) {
+            SeatActionResult result = new SeatActionResult();
+            result.ok = false;
+            result.selected = false;
+            result.message = message == null || message.isBlank()
+                    ? "Seat update failed."
+                    : message;
+            return result;
+        }
     }
 }

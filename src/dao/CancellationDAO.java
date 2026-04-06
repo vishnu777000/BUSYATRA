@@ -10,7 +10,7 @@ import java.util.List;
 
 public class CancellationDAO {
 
-    /* ================= GENERIC HELPERS ================= */
+    
 
     private String[] buildUserRow(ResultSet rs) throws Exception {
 
@@ -74,7 +74,7 @@ public class CancellationDAO {
         return 0;
     }
 
-    /* ================= ADD CANCELLATION ================= */
+    
 
     public boolean addCancellation(
             int ticketId,
@@ -107,7 +107,7 @@ public class CancellationDAO {
         return false;
     }
 
-    /* ================= USER CANCELLATIONS ================= */
+    
 
     public List<String[]> getUserCancellations(int userId) {
 
@@ -139,7 +139,7 @@ public class CancellationDAO {
         return list;
     }
 
-    /* ================= ALL CANCELLATIONS ================= */
+    
 
     public List<String[]> getAllCancellations() {
 
@@ -168,13 +168,13 @@ public class CancellationDAO {
         return list;
     }
 
-    /* ================= TOTAL REFUNDS ================= */
+    
 
     public double getTotalRefundAmount() {
         return getDouble("SELECT IFNULL(SUM(refund_amount),0) FROM cancellations");
     }
 
-    /* ================= COUNT ================= */
+    
 
     public int getCancellationCount() {
         return getInt("SELECT COUNT(*) FROM cancellations");

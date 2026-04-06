@@ -75,6 +75,7 @@ public class WalletPanel extends JPanel implements Refreshable {
 
         JScrollPane sp = new JScrollPane(table);
         UIConfig.styleScroll(sp);
+        sp.setColumnHeaderView(table.getTableHeader());
 
         loadingLabel = new JLabel(" ", SwingConstants.RIGHT);
         loadingLabel.setFont(UIConfig.FONT_SMALL);

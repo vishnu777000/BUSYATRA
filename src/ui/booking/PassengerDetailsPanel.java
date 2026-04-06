@@ -32,7 +32,7 @@ public PassengerDetailsPanel(MainFrame frame){
     add(actions(),BorderLayout.SOUTH);
 }
 
-/* ================= HEADER ================= */
+
 
 private JComponent header(){
 
@@ -54,7 +54,7 @@ private JComponent header(){
     return panel;
 }
 
-/* ================= CENTER ================= */
+
 
 private JComponent center(){
 
@@ -110,7 +110,7 @@ private JTextField field(String title){
     return f;
 }
 
-/* ================= ACTIONS ================= */
+
 
 private JComponent actions(){
 
@@ -129,7 +129,7 @@ private JComponent actions(){
     return panel;
 }
 
-/* ================= VALIDATION ================= */
+
 
 private void proceed(){
 
@@ -159,7 +159,7 @@ private void proceed(){
     frame.showScreen(MainFrame.SCREEN_PAYMENT);
 }
 
-/* ================= REFRESH ================= */
+
 
 @Override
 public void refreshData(){

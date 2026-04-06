@@ -3,7 +3,9 @@ package config;
 import javax.swing.*;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.JTableHeader;
+import javax.swing.table.TableCellRenderer;
 import java.awt.*;
+import java.awt.event.HierarchyEvent;
 
 public class UIConfig {
 
@@ -164,6 +166,7 @@ public class UIConfig {
         table.setSelectionForeground(TEXT);
         table.setFocusable(true);
         table.setCellSelectionEnabled(false);
+        table.setAutoResizeMode(JTable.AUTO_RESIZE_SUBSEQUENT_COLUMNS);
         table.putClientProperty("terminateEditOnFocusLost", Boolean.TRUE);
 
         DefaultTableCellRenderer cellRenderer = new DefaultTableCellRenderer() {
@@ -186,6 +189,7 @@ public class UIConfig {
         table.setDefaultRenderer(Object.class, cellRenderer);
 
         JTableHeader h = table.getTableHeader();
+        TableCellRenderer headerRenderer = createTableHeaderRenderer();
         h.setFont(new Font("Segoe UI", Font.BOLD, 13));
         h.setOpaque(true);
         h.setBackground(new Color(255, 240, 243));
@@ -193,20 +197,19 @@ public class UIConfig {
         h.setBorder(BorderFactory.createMatteBorder(1, 1, 1, 1, new Color(219, 83, 102)));
         h.setReorderingAllowed(false);
         h.setResizingAllowed(true);
-        h.setDefaultRenderer(new DefaultTableCellRenderer() {
-            @Override
-            public Component getTableCellRendererComponent(
-                    JTable tbl, Object value, boolean isSelected, boolean hasFocus, int row, int col
-            ) {
-                super.getTableCellRendererComponent(tbl, value, isSelected, hasFocus, row, col);
-                setHorizontalAlignment(SwingConstants.LEFT);
-                setFont(new Font("Segoe UI", Font.BOLD, 13));
-                setForeground(new Color(128, 24, 38));
-                setBackground(new Color(255, 240, 243));
-                setBorder(BorderFactory.createMatteBorder(1, 1, 1, 1, new Color(219, 83, 102)));
-                return this;
+        h.setPreferredSize(new Dimension(0, 34));
+        h.setDefaultRenderer(headerRenderer);
+        synchronizeTableHeaders(table, headerRenderer);
+
+        Runnable installHeader = () -> configureTableScrollPane(table);
+        table.addHierarchyListener(e -> {
+            long flags = e.getChangeFlags();
+            if ((flags & HierarchyEvent.PARENT_CHANGED) != 0L
+                    || (flags & HierarchyEvent.SHOWING_CHANGED) != 0L) {
+                SwingUtilities.invokeLater(installHeader);
             }
         });
+        SwingUtilities.invokeLater(installHeader);
     }
 
     public static void styleField(JTextField f) {
@@ -227,6 +230,7 @@ public class UIConfig {
 
     public static void styleScroll(JScrollPane sp) {
         sp.setBorder(BorderFactory.createLineBorder(new Color(214, 224, 238), 1));
+        sp.setBackground(Color.WHITE);
         sp.getViewport().setBackground(Color.WHITE);
     }
 
@@ -255,5 +259,96 @@ public class UIConfig {
         l.setFont(FONT_SMALL);
         l.setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
         return l;
+    }
+
+    private static void configureTableScrollPane(JTable table) {
+        if (table == null) return;
+
+        Container parent = table.getParent();
+        if (!(parent instanceof JViewport)) return;
+
+        Container grandParent = parent.getParent();
+        if (!(grandParent instanceof JScrollPane)) return;
+
+        JScrollPane scrollPane = (JScrollPane) grandParent;
+        JTableHeader header = table.getTableHeader();
+        if (header == null) return;
+
+        TableCellRenderer headerRenderer = header.getDefaultRenderer();
+        if (headerRenderer == null) {
+            headerRenderer = createTableHeaderRenderer();
+            header.setDefaultRenderer(headerRenderer);
+        }
+        synchronizeTableHeaders(table, headerRenderer);
+        styleScroll(scrollPane);
+        scrollPane.setColumnHeaderView(header);
+
+        JViewport columnHeader = scrollPane.getColumnHeader();
+        if (columnHeader != null) {
+            columnHeader.setBackground(header.getBackground());
+            columnHeader.setOpaque(true);
+            columnHeader.setPreferredSize(new Dimension(0, 34));
+        }
+
+        JPanel corner = new JPanel();
+        corner.setBackground(header.getBackground());
+        corner.setBorder(header.getBorder());
+        scrollPane.setCorner(JScrollPane.UPPER_TRAILING_CORNER, corner);
+        header.revalidate();
+        header.repaint();
+    }
+
+    private static String resolveHeaderText(JTable table, Object value, int viewColumn) {
+        if (value != null) {
+            String text = String.valueOf(value).trim();
+            if (!text.isEmpty()) {
+                return text;
+            }
+        }
+
+        if (table == null || table.getModel() == null) {
+            return "";
+        }
+
+        if (viewColumn >= 0 && viewColumn < table.getColumnCount()) {
+            int modelColumn = table.convertColumnIndexToModel(viewColumn);
+            if (modelColumn >= 0 && modelColumn < table.getModel().getColumnCount()) {
+                String text = table.getModel().getColumnName(modelColumn);
+                return text == null ? "" : text;
+            }
+        }
+
+        return "";
+    }
+
+    private static TableCellRenderer createTableHeaderRenderer() {
+        return new DefaultTableCellRenderer() {
+            @Override
+            public Component getTableCellRendererComponent(
+                    JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column
+            ) {
+                super.getTableCellRendererComponent(table, resolveHeaderText(table, value, column), false, false, row, column);
+                setHorizontalAlignment(SwingConstants.LEFT);
+                setFont(new Font("Segoe UI", Font.BOLD, 13));
+                setForeground(new Color(128, 24, 38));
+                setBackground(new Color(255, 240, 243));
+                setOpaque(true);
+                setBorder(BorderFactory.createCompoundBorder(
+                        BorderFactory.createMatteBorder(1, 1, 1, 1, new Color(219, 83, 102)),
+                        BorderFactory.createEmptyBorder(0, 8, 0, 8)
+                ));
+                return this;
+            }
+        };
+    }
+
+    private static void synchronizeTableHeaders(JTable table, TableCellRenderer headerRenderer) {
+        if (table == null || table.getModel() == null) return;
+
+        int columnCount = Math.min(table.getColumnModel().getColumnCount(), table.getModel().getColumnCount());
+        for (int i = 0; i < columnCount; i++) {
+            table.getColumnModel().getColumn(i).setHeaderValue(table.getModel().getColumnName(i));
+            table.getColumnModel().getColumn(i).setHeaderRenderer(headerRenderer);
+        }
     }
 }

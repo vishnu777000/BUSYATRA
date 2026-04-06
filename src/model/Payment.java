@@ -16,17 +16,17 @@ public class Payment {
 
     private LocalDateTime createdAt;
 
-    // Status constants
+    
     public static final String STATUS_INIT = "INIT";
     public static final String STATUS_SUCCESS = "SUCCESS";
     public static final String STATUS_FAILED = "FAILED";
 
-    // Payment methods
+    
     public static final String METHOD_UPI = "UPI";
     public static final String METHOD_CARD = "CARD";
     public static final String METHOD_WALLET = "WALLET";
 
-    /* ================= CONSTRUCTORS ================= */
+    
 
     public Payment() {}
 
@@ -39,7 +39,7 @@ public class Payment {
         this.ticketId = ticketId;
         this.amount = amount;
         this.paymentMethod = method;
-        this.status = STATUS_INIT; // 🔥 FIXED
+        this.status = STATUS_INIT; 
         this.transactionId = generateTxnId();
         this.createdAt = LocalDateTime.now();
     }
@@ -57,7 +57,7 @@ public class Payment {
         this.createdAt = createdAt;
     }
 
-    /* ================= GETTERS & SETTERS ================= */
+    
 
     public int getId() { return id; }
     public void setId(int id) { this.id = id; }
@@ -108,7 +108,7 @@ public class Payment {
         this.createdAt = createdAt;
     }
 
-    /* ================= BUSINESS METHODS ================= */
+    
 
     public void markSuccess() {
         this.status = STATUS_SUCCESS;
@@ -122,13 +122,13 @@ public class Payment {
         return STATUS_SUCCESS.equalsIgnoreCase(status);
     }
 
-    /* ================= TXN GENERATOR ================= */
+    
 
     private String generateTxnId() {
         return "TXN-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
     }
 
-    /* ================= DEBUG ================= */
+    
 
     @Override
     public String toString() {

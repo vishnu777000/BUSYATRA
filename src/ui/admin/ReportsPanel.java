@@ -111,6 +111,7 @@ public class ReportsPanel extends JPanel implements Refreshable {
 
         JScrollPane sp = new JScrollPane(table);
         UIConfig.styleScroll(sp);
+        sp.setColumnHeaderView(table.getTableHeader());
 
         loadingLabel = new JLabel(" ");
         loadingLabel.setForeground(UIConfig.TEXT_LIGHT);
@@ -198,5 +199,10 @@ public class ReportsPanel extends JPanel implements Refreshable {
     @Override
     public void refreshData() {
         loadData("");
+    }
+
+    @Override
+    public boolean refreshOnFirstShow() {
+        return false;
     }
 }

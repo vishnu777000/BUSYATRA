@@ -10,7 +10,7 @@ import java.util.List;
 
 public class DashboardDAO {
 
-    /* ================= HELPER ================= */
+    
 
     private String[] buildRow(ResultSet rs) throws Exception {
 
@@ -21,7 +21,7 @@ public class DashboardDAO {
         };
     }
 
-    /* ================= RECENT ACTIVITY ================= */
+    
 
     public List<String[]> getRecentActivity(int userId) {
 

@@ -118,6 +118,7 @@ public class AdminNewsPanel extends JPanel implements Refreshable {
 
         JScrollPane sp = new JScrollPane(table);
         UIConfig.styleScroll(sp);
+        sp.setColumnHeaderView(table.getTableHeader());
 
         JPanel btns = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
         btns.setOpaque(false);
@@ -162,9 +163,13 @@ public class AdminNewsPanel extends JPanel implements Refreshable {
     }
 
     private void loadNewsTable() {
-        if (busy) return;
+        loadNewsTable(false);
+    }
+
+    private void loadNewsTable(boolean force) {
+        if (busy && !force) return;
         long now = System.currentTimeMillis();
-        if (now - lastLoadMs < 3000L && model.getRowCount() > 0) {
+        if (!force && now - lastLoadMs < 3000L && model.getRowCount() > 0) {
             setBusy(false, "Using recent data");
             return;
         }
@@ -180,10 +185,11 @@ public class AdminNewsPanel extends JPanel implements Refreshable {
                 try {
                     model.setRowCount(0);
                     for (String[] row : get()) {
+                        String status = row[2] == null ? "" : row[2].trim().toUpperCase();
                         model.addRow(new Object[]{
                                 row[0],
                                 row[1],
-                                "1".equals(row[2]) ? "YES" : "NO",
+                                ("1".equals(status) || "YES".equals(status) || "TRUE".equals(status) || "ACTIVE".equals(status)) ? "YES" : "NO",
                                 row[3]
                         });
                     }
@@ -217,7 +223,7 @@ public class AdminNewsPanel extends JPanel implements Refreshable {
                 try {
                     if (Boolean.TRUE.equals(get())) {
                         messageArea.setText("");
-                        loadNewsTable();
+                        loadNewsTable(true);
                     } else {
                         setBusy(false, "Publish failed");
                         JOptionPane.showMessageDialog(AdminNewsPanel.this, "Publish failed");
@@ -253,7 +259,7 @@ public class AdminNewsPanel extends JPanel implements Refreshable {
             protected void done() {
                 try {
                     if (Boolean.TRUE.equals(get())) {
-                        loadNewsTable();
+                        loadNewsTable(true);
                     } else {
                         setBusy(false, "Update failed");
                         JOptionPane.showMessageDialog(AdminNewsPanel.this, "Update failed");
@@ -289,7 +295,7 @@ public class AdminNewsPanel extends JPanel implements Refreshable {
             protected void done() {
                 try {
                     if (Boolean.TRUE.equals(get())) {
-                        loadNewsTable();
+                        loadNewsTable(true);
                     } else {
                         setBusy(false, "Delete failed");
                         JOptionPane.showMessageDialog(AdminNewsPanel.this, "Delete failed");
@@ -306,5 +312,10 @@ public class AdminNewsPanel extends JPanel implements Refreshable {
     @Override
     public void refreshData() {
         loadNewsTable();
+    }
+
+    @Override
+    public boolean refreshOnFirstShow() {
+        return false;
     }
 }

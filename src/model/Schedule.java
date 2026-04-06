@@ -16,21 +16,22 @@ public class Schedule {
 
     private String status;
 
-    /* ================= EXTRA DISPLAY FIELDS ================= */
+    
 
     private String operator;
     private String busType;
     private String routeName;
 
-    // Status constants
+    
     public static final String STATUS_ACTIVE = "ACTIVE";
     public static final String STATUS_INACTIVE = "INACTIVE";
+    public static final String STATUS_CANCELLED = "CANCELLED";
 
-    // Formatter
+    
     private static final DateTimeFormatter FORMATTER =
             DateTimeFormatter.ofPattern("dd MMM yyyy, hh:mm a");
 
-    /* ================= CONSTRUCTORS ================= */
+    
 
     public Schedule() {}
 
@@ -46,7 +47,7 @@ public class Schedule {
         this.status = STATUS_ACTIVE;
     }
 
-    /* ================= GETTERS & SETTERS ================= */
+    
 
     public int getId() { return id; }
     public void setId(int id) { this.id = id; }
@@ -77,7 +78,8 @@ public class Schedule {
 
     public void setStatus(String status) {
         if (!STATUS_ACTIVE.equalsIgnoreCase(status) &&
-            !STATUS_INACTIVE.equalsIgnoreCase(status)) {
+            !STATUS_INACTIVE.equalsIgnoreCase(status) &&
+            !STATUS_CANCELLED.equalsIgnoreCase(status)) {
             throw new IllegalArgumentException("Invalid schedule status");
         }
         this.status = status.toUpperCase();
@@ -92,7 +94,7 @@ public class Schedule {
     public String getRouteName() { return routeName; }
     public void setRouteName(String routeName) { this.routeName = routeName; }
 
-    /* ================= HELPER METHODS ================= */
+    
 
     public String getFormattedDeparture() {
         return departureTime != null ? departureTime.format(FORMATTER) : "";
@@ -109,7 +111,7 @@ public class Schedule {
         return 0;
     }
 
-    /* ================= BUSINESS METHODS ================= */
+    
 
     public boolean isActive() {
         return STATUS_ACTIVE.equalsIgnoreCase(status);
@@ -119,7 +121,7 @@ public class Schedule {
         return departureTime != null && departureTime.isBefore(LocalDateTime.now());
     }
 
-    /* ================= DEBUG ================= */
+    
 
     @Override
     public String toString() {

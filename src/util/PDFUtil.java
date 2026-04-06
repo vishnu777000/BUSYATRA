@@ -15,7 +15,7 @@ public class PDFUtil {
 
     private static final BaseColor BUSYATRA_BLUE = new BaseColor(33,150,243);
 
-    /* ================= QR GENERATOR ================= */
+    
 
     private static byte[] generateQRBytes(String text, int size) throws Exception {
 
@@ -39,7 +39,7 @@ public class PDFUtil {
         return baos.toByteArray();
     }
 
-    /* ================= CELL ================= */
+    
 
     private static PdfPCell cell(String text, Font font, int align, boolean border){
 
@@ -57,7 +57,7 @@ public class PDFUtil {
         return c;
     }
 
-    /* ================= SECTION TITLE ================= */
+    
 
     private static PdfPCell sectionTitle(String text){
 
@@ -71,7 +71,7 @@ public class PDFUtil {
         return c;
     }
 
-    /* ================= MAIN PDF ================= */
+    
 
     public static void createPremiumTicketPDF(String filePath, TicketPDFData data){
 
@@ -87,7 +87,7 @@ public class PDFUtil {
             Font bold = new Font(Font.FontFamily.HELVETICA,11,Font.BOLD);
             Font normal = new Font(Font.FontFamily.HELVETICA,11);
 
-            /* ================= WATERMARK ================= */
+            
 
             PdfContentByte canvas = writer.getDirectContentUnder();
 
@@ -101,7 +101,7 @@ public class PDFUtil {
                     420,
                     45);
 
-            /* ================= HEADER ================= */
+            
 
             Paragraph app = new Paragraph("BusYatra",titleFont);
             app.setAlignment(Element.ALIGN_CENTER);
@@ -122,7 +122,7 @@ public class PDFUtil {
 
             doc.add(new Paragraph(" "));
 
-            /* ================= TOP TABLE ================= */
+            
 
             PdfPTable top = new PdfPTable(new float[]{70,30});
             top.setWidthPercentage(100);
@@ -141,7 +141,7 @@ public class PDFUtil {
 
             top.addCell(leftTop);
 
-            /* ================= QR ================= */
+            
 
             PdfPCell qrCell = new PdfPCell();
             qrCell.setBorder(Rectangle.BOX);
@@ -166,7 +166,7 @@ public class PDFUtil {
             doc.add(top);
             doc.add(new Paragraph(" "));
 
-            /* ================= TRIP TABLE ================= */
+            
 
             PdfPTable trip = new PdfPTable(2);
             trip.setWidthPercentage(100);

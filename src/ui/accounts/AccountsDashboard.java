@@ -220,6 +220,11 @@ public class AccountsDashboard extends JPanel implements Refreshable {
         activeWorker.execute();
     }
 
+    @Override
+    public boolean refreshOnFirstShow() {
+        return false;
+    }
+
     private void setBusy(boolean busy, String message) {
         if (statusLabel != null) statusLabel.setText(message == null ? " " : message);
         if (refreshBtn != null) {

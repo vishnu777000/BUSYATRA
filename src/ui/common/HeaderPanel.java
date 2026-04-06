@@ -1,6 +1,7 @@
 package ui.common;
 
 import config.UIConfig;
+import dao.CouponDAO;
 import dao.NewsDAO;
 import util.IconUtil;
 import util.Session;
@@ -16,12 +17,15 @@ public class HeaderPanel extends JPanel {
     private final MainFrame frame;
     private final Runnable onLogout;
     private final NewsDAO newsDAO = new NewsDAO();
+    private final CouponDAO couponDAO = new CouponDAO();
 
     private JLabel pageTitle;
     private JLabel notificationBadge;
     private JButton bellBtn;
-    private List<String[]> cachedNews = new ArrayList<>();
-    private long lastNewsRefreshMs = 0L;
+    private List<String[]> cachedNotifications = new ArrayList<>();
+    private long lastNotificationRefreshMs = 0L;
+    private boolean notificationsLoaded = false;
+    private boolean notificationLoading = false;
 
     public HeaderPanel(MainFrame frame, Runnable onLogout) {
         this.frame = frame;
@@ -163,20 +167,20 @@ public class HeaderPanel extends JPanel {
         JPopupMenu popup = new JPopupMenu();
         popup.setBorder(BorderFactory.createLineBorder(new Color(225, 229, 236)));
 
-        if (cachedNews == null || cachedNews.isEmpty()) {
+        if (cachedNotifications == null || cachedNotifications.isEmpty()) {
             JMenuItem empty = new JMenuItem("No notifications");
             empty.setEnabled(false);
             popup.add(empty);
         } else {
-            int limit = Math.min(6, cachedNews.size());
+            int limit = Math.min(6, cachedNotifications.size());
             for (int i = 0; i < limit; i++) {
-                String[] n = cachedNews.get(i);
+                String[] n = cachedNotifications.get(i);
                 String msg = n.length > 1 ? n[1] : "Update";
                 if (msg.length() > 70) {
                     msg = msg.substring(0, 67) + "...";
                 }
                 JMenuItem item = new JMenuItem(msg);
-                item.addActionListener(e -> frame.showScreen(MainFrame.SCREEN_USER));
+                item.addActionListener(e -> frame.showScreen(notificationTargetScreen()));
                 popup.add(item);
             }
         }
@@ -184,26 +188,59 @@ public class HeaderPanel extends JPanel {
         popup.show(bellBtn, -170, bellBtn.getHeight() + 6);
     }
 
+    private String notificationTargetScreen() {
+        String role = Session.role == null ? "" : Session.role.trim().toUpperCase();
+        switch (role) {
+            case "ADMIN":
+                return MainFrame.SCREEN_ADMIN;
+            case "MANAGER":
+                return MainFrame.SCREEN_MANAGER;
+            case "CLERK":
+            case "BOOKING_CLERK":
+                return MainFrame.SCREEN_CLERK;
+            case "USER":
+            default:
+                return MainFrame.SCREEN_USER;
+        }
+    }
+
     private void refreshNotifications() {
         long now = System.currentTimeMillis();
-        if (now - lastNewsRefreshMs < 20_000L && cachedNews != null && !cachedNews.isEmpty()) {
-            setNotificationCount(cachedNews.size());
+        if (notificationsLoaded && now - lastNotificationRefreshMs < 20_000L) {
+            setNotificationCount(cachedNotifications == null ? 0 : cachedNotifications.size());
             return;
         }
+        if (notificationLoading) {
+            return;
+        }
+        notificationLoading = true;
         SwingWorker<List<String[]>, Void> worker = new SwingWorker<>() {
             @Override
             protected List<String[]> doInBackground() {
-                return newsDAO.getActiveNews();
+                List<String[]> notifications = new ArrayList<>();
+                List<String[]> news = newsDAO.getActiveNews();
+                if (news != null) {
+                    notifications.addAll(news);
+                }
+                if (Session.userId > 0 && "USER".equalsIgnoreCase(Session.role)) {
+                    notifications.addAll(couponDAO.getNotificationItemsForUser(Session.userId, 3));
+                }
+                return notifications;
             }
 
             @Override
             protected void done() {
                 try {
-                    cachedNews = get();
-                    lastNewsRefreshMs = System.currentTimeMillis();
-                    setNotificationCount(cachedNews == null ? 0 : cachedNews.size());
+                    cachedNotifications = get();
+                    lastNotificationRefreshMs = System.currentTimeMillis();
+                    notificationsLoaded = true;
+                    setNotificationCount(cachedNotifications == null ? 0 : cachedNotifications.size());
                 } catch (Exception ignored) {
+                    notificationsLoaded = true;
+                    cachedNotifications = new ArrayList<>();
                     setNotificationCount(0);
+                } finally {
+                    notificationLoading = false;
                 }
             }
         };

@@ -1,70 +1,47 @@
 package dao;
 
 import config.DBConfig;
+import util.SchemaCache;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
-import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Map;
 import java.util.Set;
 
 public class SeatLockDAO {
 
-    private final Map<String, Boolean> tableCache = new HashMap<>();
-    private final Map<String, Boolean> columnCache = new HashMap<>();
     private volatile long lastClearExpiredMs = 0L;
+    private final ThreadLocal<String> lastError = new ThreadLocal<>();
+
+    public void clearLastError() {
+        lastError.remove();
+    }
+
+    public String getLastError() {
+        String message = lastError.get();
+        return message == null ? "" : message;
+    }
+
+    public boolean hasLastError() {
+        String message = lastError.get();
+        return message != null && !message.isBlank();
+    }
+
+    private void setLastError(Exception error) {
+        lastError.set(DBConfig.userFriendlyMessage(error));
+    }
 
     private boolean tableExists(String tableName) {
-        if (tableCache.containsKey(tableName)) return tableCache.get(tableName);
-
-        String sql =
-                "SELECT 1 FROM information_schema.tables " +
-                "WHERE table_schema = DATABASE() AND table_name = ? LIMIT 1";
-
-        try (Connection con = DBConfig.getConnection();
-             PreparedStatement ps = con.prepareStatement(sql)) {
-            ps.setString(1, tableName);
-            try (ResultSet rs = ps.executeQuery()) {
-                boolean exists = rs.next();
-                tableCache.put(tableName, exists);
-                return exists;
-            }
-        } catch (Exception e) {
-            tableCache.put(tableName, false);
-            return false;
-        }
+        return SchemaCache.tableExists(tableName);
     }
 
     private boolean columnExists(String tableName, String columnName) {
-        String key = tableName + "." + columnName;
-        if (columnCache.containsKey(key)) return columnCache.get(key);
-
-        String sql =
-                "SELECT 1 FROM information_schema.columns " +
-                "WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ? LIMIT 1";
-
-        try (Connection con = DBConfig.getConnection();
-             PreparedStatement ps = con.prepareStatement(sql)) {
-            ps.setString(1, tableName);
-            ps.setString(2, columnName);
-            try (ResultSet rs = ps.executeQuery()) {
-                boolean exists = rs.next();
-                columnCache.put(key, exists);
-                return exists;
-            }
-        } catch (Exception e) {
-            columnCache.put(key, false);
-            return false;
-        }
+        return SchemaCache.columnExists(tableName, columnName);
     }
 
     private String firstExistingColumn(String table, String... candidates) {
-        for (String candidate : candidates) {
-            if (columnExists(table, candidate)) return candidate;
-        }
-        return null;
+        return SchemaCache.firstExistingColumn(table, candidates);
     }
 
     private String seatCol() {
@@ -104,6 +81,7 @@ public class SeatLockDAO {
     }
 
     public void clearExpiredLocks() {
+        clearLastError();
         long now = System.currentTimeMillis();
         if (now - lastClearExpiredMs < 10_000L) return;
         if (!lockingInfrastructureAvailable()) return;
@@ -117,7 +95,10 @@ public class SeatLockDAO {
             ps.executeUpdate();
             lastClearExpiredMs = now;
         } catch (Exception e) {
-            e.printStackTrace();
+            setLastError(e);
+            if (!DBConfig.isConnectionUnavailable(e)) {
+                e.printStackTrace();
+            }
         }
     }
 
@@ -126,7 +107,8 @@ public class SeatLockDAO {
     }
 
     public boolean lockSeat(int scheduleId, String seatNo, int userId, int fromOrder, int toOrder) {
-        // Fail-open for legacy schemas without lock support.
+        clearLastError();
+        
         if (!lockingInfrastructureAvailable()) return true;
 
         String schedule = scheduleCol();
@@ -169,7 +151,10 @@ public class SeatLockDAO {
             if (to != null) ps.setInt(idx, toOrder);
             return ps.executeUpdate() > 0;
         } catch (Exception e) {
-            e.printStackTrace();
+            setLastError(e);
+            if (!DBConfig.isConnectionUnavailable(e)) {
+                e.printStackTrace();
+            }
         }
 
         return false;
@@ -180,6 +165,7 @@ public class SeatLockDAO {
     }
 
     public boolean isSeatLocked(int scheduleId, String seatNo, int fromOrder, int toOrder) {
+        clearLastError();
         if (!lockingInfrastructureAvailable()) return false;
 
         String schedule = scheduleCol();
@@ -216,7 +202,10 @@ public class SeatLockDAO {
                 return false;
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            setLastError(e);
+            if (!DBConfig.isConnectionUnavailable(e)) {
+                e.printStackTrace();
+            }
         }
 
         return false;
@@ -227,6 +216,7 @@ public class SeatLockDAO {
     }
 
     public Set<String> getLockedSeats(int scheduleId, int fromOrder, int toOrder) {
+        clearLastError();
         Set<String> set = new HashSet<>();
         if (!lockingInfrastructureAvailable()) return set;
 
@@ -267,13 +257,17 @@ public class SeatLockDAO {
                 }
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            setLastError(e);
+            if (!DBConfig.isConnectionUnavailable(e)) {
+                e.printStackTrace();
+            }
         }
 
         return set;
     }
 
     public void releaseSeatLocks(int userId) {
+        clearLastError();
         if (!lockingInfrastructureAvailable()) return;
 
         String user = userCol();
@@ -285,11 +279,15 @@ public class SeatLockDAO {
             ps.setInt(1, userId);
             ps.executeUpdate();
         } catch (Exception e) {
-            e.printStackTrace();
+            setLastError(e);
+            if (!DBConfig.isConnectionUnavailable(e)) {
+                e.printStackTrace();
+            }
         }
     }
 
     public boolean releaseSeatLock(int scheduleId, String seatNo, int userId) {
+        clearLastError();
         if (!lockingInfrastructureAvailable()) return true;
 
         String schedule = scheduleCol();
@@ -307,7 +305,10 @@ public class SeatLockDAO {
             ps.setInt(3, userId);
             return ps.executeUpdate() > 0;
         } catch (Exception e) {
-            e.printStackTrace();
+            setLastError(e);
+            if (!DBConfig.isConnectionUnavailable(e)) {
+                e.printStackTrace();
+            }
         }
 
         return false;

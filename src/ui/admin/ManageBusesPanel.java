@@ -94,6 +94,7 @@ public class ManageBusesPanel extends JPanel implements Refreshable {
 
         JScrollPane sp = new JScrollPane(table);
         UIConfig.styleScroll(sp);
+        sp.setColumnHeaderView(table.getTableHeader());
 
         loadingLabel = new JLabel(" ");
         loadingLabel.setForeground(UIConfig.TEXT_LIGHT);
@@ -416,5 +417,10 @@ public class ManageBusesPanel extends JPanel implements Refreshable {
     @Override
     public void refreshData() {
         loadBuses();
+    }
+
+    @Override
+    public boolean refreshOnFirstShow() {
+        return false;
     }
 }

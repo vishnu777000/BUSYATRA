@@ -36,7 +36,7 @@ public class OTPDAO {
         }
     }
 
-    /* ================= SAVE OTP ================= */
+    
 
     public boolean saveOTP(String email, String otp) {
 
@@ -51,7 +51,7 @@ public class OTPDAO {
 
         try (Connection con = DBConfig.getConnection()) {
 
-            con.setAutoCommit(false); // 🔥 transaction
+            con.setAutoCommit(false); 
 
             try (
                     PreparedStatement ps1 = con.prepareStatement(deleteOld);
@@ -82,9 +82,9 @@ public class OTPDAO {
         return false;
     }
 
-    /* ================= VERIFY OTP ================= */
+    
 
-    public boolean verifyOTP(String email, String otp) {
+    public boolean isValidOTP(String email, String otp) {
 
         ensureOTPTable();
 
@@ -104,13 +104,7 @@ public class OTPDAO {
 
             ResultSet rs = ps.executeQuery();
 
-            if (rs.next()) {
-
-                // 🔥 mark used immediately
-                markUsed(email, otp);
-
-                return true;
-            }
+            return rs.next();
 
         } catch (Exception e) {
             e.printStackTrace();
@@ -119,7 +113,15 @@ public class OTPDAO {
         return false;
     }
 
-    /* ================= MARK USED ================= */
+    public boolean verifyOTP(String email, String otp) {
+        boolean valid = isValidOTP(email, otp);
+        if (valid) {
+            markUsed(email, otp);
+        }
+        return valid;
+    }
+
+    
 
     public void markUsed(String email, String otp) {
 
@@ -144,7 +146,7 @@ public class OTPDAO {
         }
     }
 
-    /* ================= CLEAN EXPIRED ================= */
+    
 
     public void deleteExpiredOTPs() {
 

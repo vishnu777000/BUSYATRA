@@ -25,7 +25,7 @@ public class TicketPdfUtil {
         PdfWriter.getInstance(doc, new FileOutputStream(filePath));
         doc.open();
 
-        /* ================= FONTS ================= */
+        
         Font titleFont = new Font(Font.FontFamily.HELVETICA, 22, Font.BOLD);
         Font subTitleFont = new Font(Font.FontFamily.HELVETICA, 12, Font.BOLD);
         Font labelFont = new Font(Font.FontFamily.HELVETICA, 11, Font.BOLD);
@@ -33,7 +33,7 @@ public class TicketPdfUtil {
         Font footerFont = new Font(Font.FontFamily.HELVETICA, 9, Font.ITALIC);
         Font smallFont = new Font(Font.FontFamily.HELVETICA, 9);
 
-        /* ================= HEADER ================= */
+        
         Paragraph title = new Paragraph("BusYatra – E-Ticket", titleFont);
         title.setAlignment(Element.ALIGN_CENTER);
         doc.add(title);
@@ -47,7 +47,7 @@ public class TicketPdfUtil {
 
         doc.add(line());
 
-        /* ================= TICKET META ================= */
+        
         PdfPTable meta = new PdfPTable(2);
         meta.setWidthPercentage(100);
         meta.setSpacingBefore(10);
@@ -62,7 +62,7 @@ public class TicketPdfUtil {
 
         doc.add(Chunk.NEWLINE);
 
-        /* ================= MAIN DETAILS ================= */
+        
         PdfPTable table = new PdfPTable(2);
         table.setWidthPercentage(100);
         table.setSpacingBefore(10);
@@ -81,7 +81,7 @@ public class TicketPdfUtil {
         doc.add(Chunk.NEWLINE);
         doc.add(line());
 
-        /* ================= IMPORTANT NOTES ================= */
+        
         Paragraph noteTitle = new Paragraph("Important Instructions", labelFont);
         noteTitle.setSpacingBefore(10);
         doc.add(noteTitle);
@@ -95,7 +95,7 @@ public class TicketPdfUtil {
         note.setSpacingBefore(6);
         doc.add(note);
 
-        /* ================= FOOTER ================= */
+        
         doc.add(Chunk.NEWLINE);
         doc.add(line());
 
@@ -110,7 +110,7 @@ public class TicketPdfUtil {
         doc.close();
     }
 
-    /* ================= HELPERS ================= */
+    
 
     private static void addRow(
             PdfPTable table,

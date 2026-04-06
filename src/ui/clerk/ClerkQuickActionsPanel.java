@@ -2,6 +2,7 @@ package ui.clerk;
 
 import config.UIConfig;
 import ui.common.MainFrame;
+import util.BookingContext;
 import util.IconUtil;
 
 import javax.swing.*;
@@ -27,27 +28,23 @@ public class ClerkQuickActionsPanel extends JPanel {
 
         JButton bookBtn   = actionButton("New Booking   (F1)", "book.png");
         JButton cancelBtn = actionButton("Cancel Ticket (F2)", "cancel.png");
-        JButton searchBtn = actionButton("Search Ticket (F3)", "search.png");
+        JButton searchBtn = actionButton("My Tickets    (F3)", "search.png");
         JButton printBtn  = actionButton("Print Ticket  (F4)", "printing.png");
         JButton walletBtn = actionButton("Wallet / Cash (F5)", "wallet.png");
 
-        /* ================= ACTIONS ================= */
+        
 
         bookBtn.addActionListener(e ->
                 frame.showScreen(MainFrame.SCREEN_SEARCH)
         );
 
-        cancelBtn.addActionListener(e ->
-                frame.showScreen(MainFrame.SCREEN_CANCEL)
-        );
+        cancelBtn.addActionListener(e -> openTicketAction(MainFrame.SCREEN_CANCEL, "cancel"));
 
         searchBtn.addActionListener(e ->
                 frame.showScreen(MainFrame.SCREEN_MY_TICKETS)
         );
 
-        printBtn.addActionListener(e ->
-                frame.showScreen(MainFrame.SCREEN_TICKET_PREVIEW)
-        );
+        printBtn.addActionListener(e -> openTicketAction(MainFrame.SCREEN_TICKET_PREVIEW, "print"));
 
         walletBtn.addActionListener(e ->
                 frame.showScreen(MainFrame.SCREEN_WALLET)
@@ -68,7 +65,7 @@ public class ClerkQuickActionsPanel extends JPanel {
         );
     }
 
-    /* ================= BUTTON ================= */
+    
 
     private JButton actionButton(String text, String icon) {
 
@@ -93,7 +90,7 @@ public class ClerkQuickActionsPanel extends JPanel {
         return btn;
     }
 
-    /* ================= SHORTCUTS ================= */
+    
 
     private void registerShortcuts(
             JButton book,
@@ -123,5 +120,18 @@ public class ClerkQuickActionsPanel extends JPanel {
                 btn.doClick();
             }
         });
+    }
+
+    private void openTicketAction(String screen, String actionLabel) {
+        if (BookingContext.getPrimaryTicketId() <= 0 && BookingContext.getRecentTicketCount() <= 0) {
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Select a booking from the clerk queue or open My Tickets first, then " + actionLabel + " it.",
+                    "Booking Required",
+                    JOptionPane.INFORMATION_MESSAGE
+            );
+            return;
+        }
+        frame.showScreen(screen);
     }
 }

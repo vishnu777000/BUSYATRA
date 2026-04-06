@@ -4,18 +4,18 @@ public class Route {
 
     private int id;
 
-    private String routeName;     // Vizag → Vijayawada
-    private int totalDistance;    // in KM
-    private double baseFare;      // per KM
+    private String routeName;     
+    private int totalDistance;    
+    private double baseFare;      
 
     private String routeMap;
     private String status;
 
-    // Status constants
+    
     public static final String STATUS_ACTIVE = "ACTIVE";
     public static final String STATUS_INACTIVE = "INACTIVE";
 
-    /* ================= CONSTRUCTORS ================= */
+    
 
     public Route() {}
 
@@ -26,7 +26,7 @@ public class Route {
         this.routeName = routeName;
         setTotalDistance(totalDistance);
         setBaseFare(baseFare);
-        this.status = STATUS_ACTIVE; // 🔥 default
+        this.status = STATUS_ACTIVE; 
     }
 
     public Route(int id, String routeName,
@@ -41,7 +41,7 @@ public class Route {
         setStatus(status);
     }
 
-    /* ================= GETTERS & SETTERS ================= */
+    
 
     public int getId() { return id; }
     public void setId(int id) { this.id = id; }
@@ -86,7 +86,7 @@ public class Route {
         this.status = status.toUpperCase();
     }
 
-    /* ================= HELPER ================= */
+    
 
     public String getSource() {
         return extractPart(0);
@@ -106,7 +106,7 @@ public class Route {
         return "";
     }
 
-    /* ================= BUSINESS METHODS ================= */
+    
 
     public boolean isActive() {
         return STATUS_ACTIVE.equalsIgnoreCase(status);
@@ -120,7 +120,7 @@ public class Route {
         this.status = STATUS_INACTIVE;
     }
 
-    /* ================= DEBUG ================= */
+    
 
     @Override
     public String toString() {

@@ -12,6 +12,8 @@ import java.awt.event.KeyEvent;
 
 public class ProfileDialog extends JDialog {
 
+    private JLabel walletLabel;
+
     public ProfileDialog(JFrame parent, MainFrame frame) {
 
         super(parent, "Profile", true);
@@ -23,8 +25,8 @@ public class ProfileDialog extends JDialog {
         setResizable(false);
 
         add(mainCard(frame), BorderLayout.CENTER);
+        loadWalletBalance();
 
-        /* ESC CLOSE */
         getRootPane().registerKeyboardAction(
                 e -> dispose(),
                 KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0),
@@ -34,17 +36,13 @@ public class ProfileDialog extends JDialog {
         setVisible(true);
     }
 
-    /* ================= MAIN CARD ================= */
-
-    private JComponent mainCard(MainFrame frame){
+    private JComponent mainCard(MainFrame frame) {
 
         JPanel card = new JPanel();
         card.setLayout(new BoxLayout(card, BoxLayout.Y_AXIS));
         UIConfig.styleCard(card);
 
-        card.setBorder(BorderFactory.createEmptyBorder(20,20,20,20));
-
-        /* ================= HEADER ================= */
+        card.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
 
         JLabel title = new JLabel("My Profile");
         title.setFont(UIConfig.FONT_TITLE);
@@ -60,29 +58,19 @@ public class ProfileDialog extends JDialog {
         card.add(subtitle);
         card.add(Box.createVerticalStrut(15));
 
-        /* ================= INFO ================= */
-
-        card.add(infoRow("👤 Name", Session.username));
-        card.add(infoRow("🛡 Role", Session.role));
-        card.add(infoRow("✉ Email", Session.userEmail));
+        card.add(infoRow("Name", Session.username));
+        card.add(infoRow("Role", Session.role));
+        card.add(infoRow("Email", Session.userEmail));
 
         card.add(Box.createVerticalStrut(10));
 
-        /* ================= WALLET ================= */
+        walletLabel = new JLabel("Wallet Balance : Loading...");
+        walletLabel.setFont(new Font("Segoe UI", Font.BOLD, 16));
+        walletLabel.setForeground(UIConfig.TEXT_LIGHT);
+        walletLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
 
-        double balance = new WalletDAO().getBalance(Session.userId);
-
-        JLabel wallet = new JLabel(
-                "Wallet Balance : ₹ " + String.format("%.2f", balance)
-        );
-        wallet.setFont(new Font("Segoe UI", Font.BOLD, 16));
-        wallet.setForeground(UIConfig.SUCCESS);
-        wallet.setAlignmentX(Component.CENTER_ALIGNMENT);
-
-        card.add(wallet);
+        card.add(walletLabel);
         card.add(Box.createVerticalStrut(15));
-
-        /* ================= BUTTONS ================= */
 
         JPanel btnRow = new JPanel(new GridLayout(1, 3, 10, 0));
         btnRow.setOpaque(false);
@@ -120,9 +108,34 @@ public class ProfileDialog extends JDialog {
         return card;
     }
 
-    /* ================= INFO ROW ================= */
+    private void loadWalletBalance() {
+        SwingWorker<Double, Void> worker = new SwingWorker<>() {
+            @Override
+            protected Double doInBackground() {
+                return new WalletDAO().getBalance(Session.userId);
+            }
 
-    private JComponent infoRow(String key, String value){
+            @Override
+            protected void done() {
+                if (walletLabel == null || !isDisplayable()) {
+                    return;
+                }
+
+                try {
+                    double balance = get();
+                    walletLabel.setText("Wallet Balance : INR " + String.format("%.2f", balance));
+                    walletLabel.setForeground(balance <= 0 ? UIConfig.TEXT_LIGHT : UIConfig.SUCCESS);
+                } catch (Exception e) {
+                    walletLabel.setText("Wallet Balance : Unavailable");
+                    walletLabel.setForeground(UIConfig.TEXT_LIGHT);
+                }
+            }
+        };
+
+        worker.execute();
+    }
+
+    private JComponent infoRow(String key, String value) {
 
         JPanel row = new JPanel(new BorderLayout());
         row.setOpaque(false);

@@ -23,6 +23,7 @@ public class LoginFrame extends JFrame {
     public LoginFrame(){
 
         setTitle("BusYatra - Login");
+        setIconImage(IconUtil.load("buslogo.png", 32, 32).getImage());
         setSize(900,580);
         setLocationRelativeTo(null);
         setDefaultCloseOperation(EXIT_ON_CLOSE);
@@ -36,6 +37,7 @@ public class LoginFrame extends JFrame {
         getRootPane().setDefaultButton(loginBtn);
 
         setVisible(true);
+        warmupLoginPath();
     }
 
     private JPanel topBanner(){
@@ -291,6 +293,17 @@ public class LoginFrame extends JFrame {
             }
         };
 
+        worker.execute();
+    }
+
+    private void warmupLoginPath() {
+        SwingWorker<Void, Void> worker = new SwingWorker<>() {
+            @Override
+            protected Void doInBackground() {
+                userDAO.warmLoginMetadata();
+                return null;
+            }
+        };
         worker.execute();
     }
 

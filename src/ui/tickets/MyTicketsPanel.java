@@ -19,6 +19,7 @@ public class MyTicketsPanel extends JPanel implements Refreshable {
     private JTable table;
     private DefaultTableModel model;
     private JLabel statusLabel;
+    private final List<TicketRowMeta> ticketRows = new ArrayList<>();
 
     public MyTicketsPanel(MainFrame frame) {
 
@@ -74,7 +75,7 @@ public class MyTicketsPanel extends JPanel implements Refreshable {
     private JPanel tableCard() {
 
         model = new DefaultTableModel(
-                new Object[]{"Ticket ID","From","To","Seat(s)","Fare (INR)","Journey Date","Status"},0){
+                new Object[]{"Ticket Ref","From","To","Seat(s)","Fare (INR)","Journey Date","Status"},0){
             public boolean isCellEditable(int r,int c){
                 return false;
             }
@@ -85,6 +86,7 @@ public class MyTicketsPanel extends JPanel implements Refreshable {
 
         JScrollPane sp = new JScrollPane(table);
         UIConfig.styleScroll(sp);
+        sp.setColumnHeaderView(table.getTableHeader());
 
         JPanel card = new JPanel(new BorderLayout());
         UIConfig.styleCard(card);
@@ -102,29 +104,24 @@ public class MyTicketsPanel extends JPanel implements Refreshable {
     private void loadBookings() {
 
         model.setRowCount(0);
+        ticketRows.clear();
         if (statusLabel != null) statusLabel.setText("Loading tickets...");
         setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
 
-        SwingWorker<List<Object[]>,Void> worker = new SwingWorker<>() {
+        SwingWorker<List<TicketRowMeta>,Void> worker = new SwingWorker<>() {
             @Override
-            protected List<Object[]> doInBackground() {
+            protected List<TicketRowMeta> doInBackground() {
 
-                List<Object[]> data = new ArrayList<>();
+                List<TicketRowMeta> data = new ArrayList<>();
 
                 try {
                     List<String[]> list = new BookingDAO().getBookingsByUser(Session.userId);
 
                     for(String[] r : list){
-                        if (r == null || r.length < 7) continue;
-                        data.add(new Object[]{
-                                Integer.parseInt(r[0]),
-                                r[1],
-                                r[2],
-                                r[3],
-                                r[4],
-                                r[5],
-                                r[6]
-                        });
+                        TicketRowMeta row = TicketRowMeta.from(r);
+                        if (row != null) {
+                            data.add(row);
+                        }
                     }
 
                 } catch (Exception e) {
@@ -138,12 +135,14 @@ public class MyTicketsPanel extends JPanel implements Refreshable {
             protected void done() {
 
                 try {
-                    List<Object[]> data = get();
-                    for(Object[] row : data){
-                        model.addRow(row);
+                    List<TicketRowMeta> data = get();
+                    ticketRows.clear();
+                    ticketRows.addAll(data);
+                    for(TicketRowMeta row : data){
+                        model.addRow(row.toTableRow());
                     }
                     if (statusLabel != null) {
-                        statusLabel.setText("Loaded " + data.size() + " tickets");
+                        statusLabel.setText("Loaded " + data.size() + " bookings");
                     }
                 } catch (Exception e) {
                     if (statusLabel != null) statusLabel.setText("Failed to load bookings");
@@ -157,44 +156,44 @@ public class MyTicketsPanel extends JPanel implements Refreshable {
         worker.execute();
     }
 
+    private TicketRowMeta selectedRowMeta() {
+        int row = table.getSelectedRow();
+        if (row < 0 || row >= ticketRows.size()) {
+            return null;
+        }
+        return ticketRows.get(row);
+    }
+
     private void openPreview() {
 
-        int row = table.getSelectedRow();
-
-        if(row==-1){
+        TicketRowMeta selected = selectedRowMeta();
+        if(selected == null){
             JOptionPane.showMessageDialog(this,"Select booking");
             return;
         }
 
-        int id = Integer.parseInt(model.getValueAt(row,0).toString());
-
-        BookingContext.ticketId = id;
+        BookingContext.setRecentTicketIds(selected.bookingIds);
 
         frame.showScreen(MainFrame.SCREEN_TICKET_PREVIEW);
     }
 
     private void openCancelScreen() {
 
-        int row = table.getSelectedRow();
-
-        if(row==-1){
+        TicketRowMeta selected = selectedRowMeta();
+        if(selected == null){
             JOptionPane.showMessageDialog(this,"Select booking");
             return;
         }
 
-        String status = model.getValueAt(row,6).toString();
-
-        if(!"CONFIRMED".equalsIgnoreCase(status)){
+        if(!"CONFIRMED".equalsIgnoreCase(selected.status)){
             JOptionPane.showMessageDialog(this,"Only confirmed can cancel");
             return;
         }
 
-        int id = Integer.parseInt(model.getValueAt(row,0).toString());
-
         CancelTicketPanel panel =
                 (CancelTicketPanel) frame.getScreen(MainFrame.SCREEN_CANCEL);
 
-        panel.setBookingId(id);
+        panel.setBookingSelection(selected.bookingIds, selected.displayRef);
 
         frame.showScreen(MainFrame.SCREEN_CANCEL);
     }
@@ -203,16 +202,19 @@ public class MyTicketsPanel extends JPanel implements Refreshable {
         loadBookings();
     }
 
+    @Override
+    public boolean refreshOnFirstShow() {
+        return false;
+    }
+
     private void deleteHistory() {
-        int row = table.getSelectedRow();
-        if (row == -1) {
+        TicketRowMeta selected = selectedRowMeta();
+        if (selected == null) {
             JOptionPane.showMessageDialog(this, "Select booking");
             return;
         }
 
-        int id = Integer.parseInt(model.getValueAt(row, 0).toString());
-        String status = model.getValueAt(row, 6).toString();
-        if ("CONFIRMED".equalsIgnoreCase(status)) {
+        if ("CONFIRMED".equalsIgnoreCase(selected.status)) {
             JOptionPane.showMessageDialog(this, "Cancel confirmed booking first, then delete history.");
             return;
         }
@@ -223,12 +225,85 @@ public class MyTicketsPanel extends JPanel implements Refreshable {
                 JOptionPane.YES_NO_OPTION);
         if (c != JOptionPane.YES_OPTION) return;
 
-        boolean ok = new BookingDAO().deleteBookingHistoryForUser(id, Session.userId);
-        if (ok) {
-            loadBookings();
-            JOptionPane.showMessageDialog(this, "History deleted");
-        } else {
-            JOptionPane.showMessageDialog(this, "Unable to delete history");
+        if (statusLabel != null) statusLabel.setText("Deleting history...");
+        setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
+
+        SwingWorker<Boolean, Void> worker = new SwingWorker<>() {
+            @Override
+            protected Boolean doInBackground() {
+                return new BookingDAO().deleteBookingHistoryForUser(selected.bookingIds, Session.userId);
+            }
+
+            @Override
+            protected void done() {
+                setCursor(Cursor.getDefaultCursor());
+                try {
+                    if (Boolean.TRUE.equals(get())) {
+                        loadBookings();
+                        JOptionPane.showMessageDialog(MyTicketsPanel.this, "History deleted");
+                    } else {
+                        if (statusLabel != null) statusLabel.setText("Delete failed");
+                        JOptionPane.showMessageDialog(MyTicketsPanel.this, "Unable to delete history");
+                    }
+                } catch (Exception e) {
+                    if (statusLabel != null) statusLabel.setText("Delete failed");
+                    JOptionPane.showMessageDialog(MyTicketsPanel.this, "Unable to delete history");
+                }
+            }
+        };
+
+        worker.execute();
+    }
+
+    private static class TicketRowMeta {
+        private String displayRef;
+        private String from;
+        private String to;
+        private String seats;
+        private String amount;
+        private String journeyDate;
+        private String status;
+        private final List<Integer> bookingIds = new ArrayList<>();
+
+        private static TicketRowMeta from(String[] raw) {
+            if (raw == null || raw.length < 7) return null;
+
+            TicketRowMeta row = new TicketRowMeta();
+            row.displayRef = raw[0];
+            row.from = raw[1];
+            row.to = raw[2];
+            row.seats = raw[3];
+            row.amount = raw[4];
+            row.journeyDate = raw[5];
+            row.status = raw[6];
+
+            if (raw.length >= 8 && raw[7] != null) {
+                for (String token : raw[7].split(",")) {
+                    try {
+                        int id = Integer.parseInt(token.trim());
+                        if (id > 0) {
+                            row.bookingIds.add(id);
+                        }
+                    } catch (Exception ignored) {
+                    }
+                }
+            }
+
+            if (row.bookingIds.isEmpty()) {
+                try {
+                    int id = Integer.parseInt(raw[0].trim());
+                    if (id > 0) {
+                        row.bookingIds.add(id);
+                    }
+                } catch (Exception ignored) {
+                }
+            }
+
+            return row.bookingIds.isEmpty() ? null : row;
+        }
+
+        private Object[] toTableRow() {
+            return new Object[]{displayRef, from, to, seats, amount, journeyDate, status};
         }
     }
 }

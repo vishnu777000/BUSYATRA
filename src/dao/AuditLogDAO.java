@@ -8,7 +8,7 @@ import java.util.List;
 
 public class AuditLogDAO {
 
-    /* ================= INSERT LOG ================= */
+    
 
     public boolean logAction(int userId, String action, String description) {
 
@@ -35,7 +35,7 @@ public class AuditLogDAO {
         return false;
     }
 
-    /* ================= GENERIC ROW BUILDER ================= */
+    
 
     private String[] buildRow(ResultSet rs, boolean includeUser) throws SQLException {
 
@@ -57,7 +57,7 @@ public class AuditLogDAO {
         }
     }
 
-    /* ================= GET ALL LOGS ================= */
+    
 
     public List<String[]> getAllLogs() {
 
@@ -86,7 +86,7 @@ public class AuditLogDAO {
         return logs;
     }
 
-    /* ================= GET LOGS BY USER ================= */
+    
 
     public List<String[]> getLogsByUser(int userId) {
 
@@ -119,7 +119,7 @@ public class AuditLogDAO {
         return logs;
     }
 
-    /* ================= RECENT LOGS ================= */
+    
 
     public List<String[]> getRecentLogs(int limit) {
 

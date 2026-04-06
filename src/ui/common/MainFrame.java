@@ -14,6 +14,7 @@ import ui.settings.SettingsPanel;
 import ui.tickets.*;
 import ui.wallet.WalletPanel;
 
+import util.IconUtil;
 import util.PreferencesUtil;
 import util.Refreshable;
 import util.Session;
@@ -26,7 +27,7 @@ import java.util.Stack;
 
 public class MainFrame extends JFrame {
 
-    /* ================= SCREEN CONSTANTS ================= */
+    
 
     public static final String SCREEN_USER = "USER_DASHBOARD";
 
@@ -50,7 +51,7 @@ public class MainFrame extends JFrame {
     public static final String SCREEN_MANAGER = "MANAGER";
     public static final String SCREEN_CLERK = "CLERK";
 
-    /* ================= CORE ================= */
+    
 
     private final CardLayout cardLayout = new CardLayout();
     private final JPanel contentPanel = new JPanel(cardLayout);
@@ -62,12 +63,12 @@ public class MainFrame extends JFrame {
     private String currentScreen;
 
     private final String role;
-    private static final long REFRESH_THROTTLE_NS = 500_000_000L; // 500ms
+    private static final long REFRESH_THROTTLE_NS = 500_000_000L; 
     private static final boolean PERF_LOG = true;
 
     private HeaderPanel headerPanel;
 
-    /* ================= CONSTRUCTOR ================= */
+    
 
     public MainFrame(String username, String role) {
 
@@ -80,11 +81,12 @@ public class MainFrame extends JFrame {
         setVisible(true);
     }
 
-    /* ================= FRAME ================= */
+    
 
     private void initFrame() {
 
         setTitle("BusYatra");
+        setIconImage(IconUtil.load("buslogo.png", 32, 32).getImage());
         setMinimumSize(new Dimension(1200, 720));
         setExtendedState(JFrame.MAXIMIZED_BOTH);
         setLocationRelativeTo(null);
@@ -92,17 +94,17 @@ public class MainFrame extends JFrame {
         setLayout(new BorderLayout());
     }
 
-    /* ================= LAYOUT ================= */
+    
 
    private void initLayout() {
 
-    // HEADER
+    
     headerPanel = new HeaderPanel(this, this::logout);
     headerPanel.setBackground(Color.WHITE);
     headerPanel.setBorder(BorderFactory.createMatteBorder(0,0,1,0,new Color(230,230,230)));
     add(headerPanel, BorderLayout.NORTH);
 
-    // SIDEBAR (MODERN)
+    
     if (!"CLERK".equalsIgnoreCase(role) && !"BOOKING_CLERK".equalsIgnoreCase(role)) {
         SidebarPanel sidebar = new SidebarPanel(this, role);
         sidebar.setBorder(BorderFactory.createMatteBorder(0,0,0,1,new Color(232,236,242)));
@@ -111,12 +113,12 @@ public class MainFrame extends JFrame {
         add(sidebar, BorderLayout.WEST);
     }
 
-    // MAIN WRAPPER (CARD STYLE)
+    
     JPanel wrapper = new JPanel(new BorderLayout());
     wrapper.setBackground(new Color(245, 247, 250));
     wrapper.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
 
-    // CONTENT CARD (IMPORTANT 🔥)
+    
     JPanel contentCard = new JPanel(new BorderLayout());
     contentCard.setBackground(Color.WHITE);
     contentCard.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
@@ -129,14 +131,14 @@ public class MainFrame extends JFrame {
     add(wrapper, BorderLayout.CENTER);
 }
 
-    /* ================= PRELOAD ================= */
+    
 
     private String normalizeRole(String inputRole) {
         if (inputRole == null || inputRole.isBlank()) return "USER";
         return inputRole.trim().toUpperCase();
     }
 
-    /* ================= LOGOUT ================= */
+    
 
     private void logout(){
 
@@ -148,7 +150,7 @@ public class MainFrame extends JFrame {
         new LoginFrame();
     }
 
-    /* ================= DEFAULT ================= */
+    
 
     private void initDefaultScreen(){
 
@@ -178,7 +180,7 @@ public class MainFrame extends JFrame {
         }
     }
 
-    /* ================= FACTORY ================= */
+    
 
     private JPanel createScreen(String key){
 
@@ -233,7 +235,7 @@ public class MainFrame extends JFrame {
         return panel;
     }
 
-    /* ================= GET ================= */
+    
 
     public JPanel getScreen(String key){
 
@@ -250,7 +252,7 @@ public class MainFrame extends JFrame {
         return screen;
     }
 
-    /* ================= NAVIGATION ================= */
+    
 
     public void showScreen(String key){
         showScreen(key,true);
@@ -260,6 +262,7 @@ public class MainFrame extends JFrame {
 
         if(key == null || key.equals(currentScreen)) return;
         long start = System.nanoTime();
+        boolean newlyCreated = !screenCache.containsKey(key);
 
         if(trackHistory && currentScreen != null){
             navigationHistory.push(currentScreen);
@@ -281,8 +284,10 @@ public class MainFrame extends JFrame {
         setCursor(Cursor.getDefaultCursor());
         logPerf("showScreen(" + key + ")", start);
 
-        // Trigger refresh after the new screen is visible so navigation feels instant.
-        if(screen instanceof Refreshable && shouldRefresh(key)){
+        
+        if(screen instanceof Refreshable
+                && shouldRefresh(key)
+                && (!newlyCreated || ((Refreshable) screen).refreshOnFirstShow())){
             SwingUtilities.invokeLater(() -> {
                 long refreshStart = System.nanoTime();
                 ((Refreshable) screen).refreshData();
@@ -291,7 +296,7 @@ public class MainFrame extends JFrame {
         }
     }
 
-    /* ================= BACK ================= */
+    
 
     public void goBack(){
 
@@ -300,7 +305,7 @@ public class MainFrame extends JFrame {
         }
     }
 
-    /* ================= REFRESH ================= */
+    
 
     public void refreshCurrent(){
 
@@ -313,7 +318,7 @@ public class MainFrame extends JFrame {
         }
     }
 
-    /* ================= TITLE FORMAT ================= */
+    
 
     private String formatTitle(String key){
 

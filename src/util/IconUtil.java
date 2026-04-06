@@ -11,10 +11,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-/**
- * IconUtil
- * Fast icon loader with caching
- */
+
+
+
+
 public class IconUtil {
 
     private static final Map<String, ImageIcon> CACHE = new HashMap<>();
@@ -43,7 +43,7 @@ public class IconUtil {
 
     private IconUtil(){}
 
-    /* ================= ICONS ================= */
+    
 
     public static ImageIcon load(String iconName,int width,int height){
 
@@ -89,14 +89,14 @@ public class IconUtil {
         return tinted;
     }
 
-    /* ================= BANNERS ================= */
+    
 
     public static ImageIcon loadBanner(String banner,int width,int height){
 
         return loadFrom("/resources/banners/",banner,width,height);
     }
 
-    /* ================= CORE LOADER ================= */
+    
 
     private static ImageIcon loadFrom(String folder,String name,int width,int height){
 
@@ -179,7 +179,7 @@ public class IconUtil {
         return null;
     }
 
-    /* ================= FALLBACK ================= */
+    
 
     private static ImageIcon placeholder(int w,int h){
 

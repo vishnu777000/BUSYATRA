@@ -16,8 +16,14 @@ import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
 
 public class RouteTimelinePanel extends JPanel {
+
+    private static final Map<String, CacheEntry> CACHE = new ConcurrentHashMap<>();
+    private static final long CACHE_TTL_MS = 30_000L;
 
     private final int routeId;
     private final int scheduleId;
@@ -55,6 +61,14 @@ public class RouteTimelinePanel extends JPanel {
     }
 
     private void loadTimeline() {
+        String cacheKey = cacheKey();
+        CacheEntry cached = CACHE.get(cacheKey);
+        long now = System.currentTimeMillis();
+        if (cached != null && (now - cached.loadedAtMs) <= CACHE_TTL_MS) {
+            render(cached.data);
+            return;
+        }
+
         rowsPanel.removeAll();
         rowsPanel.add(statusLabel("Loading route timeline..."));
 
@@ -63,7 +77,10 @@ public class RouteTimelinePanel extends JPanel {
             protected TimelineData doInBackground() {
                 TimelineData data = new TimelineData();
 
-                List<String[]> stopRows = new RouteDAO().getStopsByRoute(routeId);
+                RouteDAO routeDAO = new RouteDAO();
+                List<String[]> stopRows = routeDAO.getStopsByRoute(routeId);
+                data.errorMessage = routeDAO.getLastError();
+                data.hasError = routeDAO.hasLastError();
                 for (String[] row : stopRows) {
                     if (row == null || row.length == 0) continue;
                     String name = safe(row, 0);
@@ -89,9 +106,34 @@ public class RouteTimelinePanel extends JPanel {
             @Override
             protected void done() {
                 try {
-                    render(get());
+                    TimelineData data = get();
+                    if (data != null && !data.stops.isEmpty()) {
+                        CacheEntry entry = new CacheEntry();
+                        entry.loadedAtMs = System.currentTimeMillis();
+                        entry.data = data;
+                        CACHE.put(cacheKey, entry);
+                    }
+                    render(data);
+                } catch (ExecutionException e) {
+                    rowsPanel.removeAll();
+                    Throwable cause = e.getCause();
+                    CacheEntry fallback = CACHE.get(cacheKey);
+                    if (fallback != null && fallback.data != null && !fallback.data.stops.isEmpty()) {
+                        render(fallback.data);
+                        return;
+                    }
+                    rowsPanel.add(statusLabel(cause != null && cause.getMessage() != null
+                            ? cause.getMessage().trim()
+                            : "Unable to load route timeline"));
+                    rowsPanel.revalidate();
+                    rowsPanel.repaint();
                 } catch (Exception ignored) {
                     rowsPanel.removeAll();
+                    CacheEntry fallback = CACHE.get(cacheKey);
+                    if (fallback != null && fallback.data != null && !fallback.data.stops.isEmpty()) {
+                        render(fallback.data);
+                        return;
+                    }
                     rowsPanel.add(statusLabel("Unable to load route timeline"));
                     rowsPanel.revalidate();
                     rowsPanel.repaint();
@@ -105,7 +147,9 @@ public class RouteTimelinePanel extends JPanel {
         rowsPanel.removeAll();
 
         if (data == null || data.stops.isEmpty()) {
-            rowsPanel.add(statusLabel("No route stops available"));
+            rowsPanel.add(statusLabel(data != null && data.hasError
+                    ? data.errorMessage
+                    : "No route stops available"));
             rowsPanel.revalidate();
             rowsPanel.repaint();
             return;
@@ -237,6 +281,10 @@ public class RouteTimelinePanel extends JPanel {
         return lbl;
     }
 
+    private String cacheKey() {
+        return routeId + "|" + scheduleId + "|" + fromStop.toUpperCase(Locale.ENGLISH) + "|" + toStop.toUpperCase(Locale.ENGLISH);
+    }
+
     private int indexOfStop(List<StopPoint> stops, String name) {
         if (name == null || name.isBlank()) return -1;
         for (int i = 0; i < stops.size(); i++) {
@@ -285,7 +333,7 @@ public class RouteTimelinePanel extends JPanel {
             try {
                 return LocalDateTime.parse(t, f);
             } catch (DateTimeParseException ignored) {
-                // try next
+                
             }
         }
 
@@ -299,7 +347,7 @@ public class RouteTimelinePanel extends JPanel {
                 LocalTime lt = LocalTime.parse(t, f);
                 return LocalDateTime.of(LocalDate.now(), lt);
             } catch (DateTimeParseException ignored) {
-                // try next
+                
             }
         }
 
@@ -316,5 +364,12 @@ public class RouteTimelinePanel extends JPanel {
         List<StopPoint> stops = new ArrayList<>();
         LocalDateTime departure;
         LocalDateTime arrival;
+        String errorMessage;
+        boolean hasError;
+    }
+
+    private static class CacheEntry {
+        long loadedAtMs;
+        TimelineData data;
     }
 }

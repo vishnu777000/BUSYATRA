@@ -6,7 +6,7 @@ public final class BookingContext {
 
     private BookingContext(){}
 
-    /* ================= CORE ================= */
+    
 
     public static int scheduleId = -1;
     public static int ticketId = -1;
@@ -30,15 +30,18 @@ public final class BookingContext {
 
     public static double farePerSeat = 0;
     public static double discount = 0;
+    public static String couponCode = "";
 
-    /* ================= SEATS ================= */
+    
 
     private static final Set<String> selectedSeats =
             Collections.synchronizedSet(new HashSet<>());
+    private static final List<Integer> recentTicketIds =
+            Collections.synchronizedList(new ArrayList<>());
 
     private static final int MAX_SEATS = 6;
 
-    /* ================= ADD ================= */
+    
 
     public static boolean addSeat(String seatNo){
 
@@ -56,7 +59,7 @@ public final class BookingContext {
         }
     }
 
-    /* ================= REMOVE ================= */
+    
 
     public static void removeSeat(String seatNo){
 
@@ -69,7 +72,7 @@ public final class BookingContext {
         recalc();
     }
 
-    /* ================= TOGGLE ================= */
+    
 
     public static void toggleSeat(String seatNo){
 
@@ -80,13 +83,13 @@ public final class BookingContext {
         }
     }
 
-    /* ================= CHECK ================= */
+    
 
     public static boolean isSeatSelected(String seatNo){
         return selectedSeats.contains(seatNo);
     }
 
-    /* ================= CLEAR ================= */
+    
 
     public static void clearSeats(){
 
@@ -97,7 +100,7 @@ public final class BookingContext {
         recalc();
     }
 
-    /* ================= GET ================= */
+    
 
     public static Set<String> getSelectedSeats(){
         return Collections.unmodifiableSet(selectedSeats);
@@ -107,7 +110,67 @@ public final class BookingContext {
         return new HashSet<>(selectedSeats);
     }
 
-    /* ================= SORTED STRING ================= */
+    public static void setRecentTicketIds(Collection<Integer> ticketIds) {
+        synchronized (recentTicketIds) {
+            recentTicketIds.clear();
+            if (ticketIds != null) {
+                for (Integer id : ticketIds) {
+                    if (id != null && id > 0 && !recentTicketIds.contains(id)) {
+                        recentTicketIds.add(id);
+                    }
+                }
+            }
+            ticketId = recentTicketIds.isEmpty()
+                    ? -1
+                    : recentTicketIds.get(recentTicketIds.size() - 1);
+        }
+    }
+
+    public static void setActiveTicketId(int id) {
+        ticketId = id;
+        setRecentTicketIds(id > 0 ? Collections.singletonList(id) : Collections.emptyList());
+    }
+
+    public static List<Integer> getRecentTicketIds() {
+        synchronized (recentTicketIds) {
+            return new ArrayList<>(recentTicketIds);
+        }
+    }
+
+    public static int getRecentTicketCount() {
+        synchronized (recentTicketIds) {
+            return recentTicketIds.size();
+        }
+    }
+
+    public static int getPrimaryTicketId() {
+        synchronized (recentTicketIds) {
+            if (!recentTicketIds.isEmpty()) {
+                return recentTicketIds.get(recentTicketIds.size() - 1);
+            }
+        }
+        return ticketId;
+    }
+
+    public static String getTicketIdListString() {
+        synchronized (recentTicketIds) {
+            if (recentTicketIds.isEmpty()) return "-";
+            List<String> ids = new ArrayList<>();
+            for (Integer id : recentTicketIds) {
+                ids.add(String.valueOf(id));
+            }
+            return String.join(", ", ids);
+        }
+    }
+
+    public static void clearRecentTicketIds() {
+        synchronized (recentTicketIds) {
+            recentTicketIds.clear();
+        }
+        ticketId = -1;
+    }
+
+    
 
     public static String getSeatListString(){
 
@@ -122,27 +185,31 @@ public final class BookingContext {
         return String.join(", ", sorted);
     }
 
-    /* ================= COUNT ================= */
+    
 
     public static int seatCount(){
         return selectedSeats.size();
     }
 
-    /* ================= AMOUNT ================= */
+    
 
     public static double getBaseAmount(){
         return seatCount() * farePerSeat;
     }
 
+    public static double getEffectiveDiscount() {
+        return Math.min(Math.max(discount, 0), getBaseAmount());
+    }
+
     public static double getFinalAmount(){
-        return Math.max(getBaseAmount() - discount,0);
+        return Math.max(getBaseAmount() - getEffectiveDiscount(),0);
     }
 
     public static double getFinalPayable(){
         return getFinalAmount();
     }
 
-    /* ================= VALIDATION ================= */
+    
 
     public static boolean isReadyForPayment(){
 
@@ -164,13 +231,23 @@ public final class BookingContext {
         return seatNo != null && seatNo.matches("S\\d+");
     }
 
-    /* ================= RECALC ================= */
+    
 
     public static void recalc(){
-        // future logic (surge pricing, coupons)
+        
     }
 
-    /* ================= RESET ================= */
+    public static void applyCoupon(String code, double discountAmount) {
+        couponCode = code == null ? "" : code.trim().toUpperCase();
+        discount = Math.max(0, discountAmount);
+    }
+
+    public static void clearCoupon() {
+        couponCode = "";
+        discount = 0;
+    }
+
+    
 
     public static void clear(){
 
@@ -196,15 +273,17 @@ public final class BookingContext {
 
         farePerSeat = 0;
         discount = 0;
+        couponCode = "";
 
+        clearRecentTicketIds();
         clearSeats();
     }
 
     public static void clearAfterPreview(){
-        ticketId = -1;
+        clearRecentTicketIds();
     }
 
-    /* ================= DEBUG ================= */
+    
 
     public static void debugPrint(){
 

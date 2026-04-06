@@ -27,7 +27,7 @@ public class ProfilePanel extends JPanel implements Refreshable {
         refreshData();
     }
 
-    /* ================= HEADER ================= */
+    
 
     private JPanel header(){
 
@@ -53,14 +53,14 @@ public class ProfilePanel extends JPanel implements Refreshable {
         return panel;
     }
 
-    /* ================= PROFILE CARD ================= */
+    
 
     private JPanel profileCard(){
 
         JPanel card = createCard();
         card.setLayout(new BoxLayout(card,BoxLayout.Y_AXIS));
 
-        /* ===== Avatar ===== */
+        
 
         JLabel avatar = new JLabel(
                 IconUtil.load("user.png",70,70)
@@ -89,7 +89,7 @@ public class ProfilePanel extends JPanel implements Refreshable {
 
         card.add(Box.createVerticalStrut(25));
 
-        /* ===== Details ===== */
+        
 
         JPanel details = new JPanel(new GridLayout(2,2,15,15));
         details.setOpaque(false);
@@ -106,7 +106,7 @@ public class ProfilePanel extends JPanel implements Refreshable {
 
         card.add(Box.createVerticalStrut(25));
 
-        /* ===== Buttons ===== */
+        
 
         JPanel buttons = new JPanel(new FlowLayout(FlowLayout.CENTER,15,0));
         buttons.setOpaque(false);
@@ -147,7 +147,7 @@ public class ProfilePanel extends JPanel implements Refreshable {
         return card;
     }
 
-    /* ================= LABEL HELPERS ================= */
+    
 
     private JLabel label(String text){
 
@@ -167,7 +167,7 @@ public class ProfilePanel extends JPanel implements Refreshable {
         return l;
     }
 
-    /* ================= CARD STYLE ================= */
+    
 
     private JPanel createCard(){
 
@@ -182,7 +182,7 @@ public class ProfilePanel extends JPanel implements Refreshable {
         return card;
     }
 
-    /* ================= REFRESH ================= */
+    
 
     @Override
     public void refreshData(){

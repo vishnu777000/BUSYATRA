@@ -2,20 +2,26 @@ package dao;
 
 import config.DBConfig;
 import model.Role;
+import util.DBConnectionUtil;
 
 import java.sql.*;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
+import java.util.regex.Pattern;
 
 public class UserDAO {
 
     private final ThreadLocal<String> lastError = new ThreadLocal<>();
-    private static final String NULL_SENTINEL = "__NULL__";
+    private final ThreadLocal<String> schemaLookupError = new ThreadLocal<>();
     private static final Map<String, String> COL_CACHE = new ConcurrentHashMap<>();
     private static final Map<String, Boolean> TABLE_CACHE = new ConcurrentHashMap<>();
+    private static final Object LOGIN_SCHEMA_LOCK = new Object();
+    private static volatile LoginSchema LOGIN_SCHEMA_CACHE;
 
     public String getLastError() {
         String err = lastError.get();
@@ -24,6 +30,40 @@ public class UserDAO {
 
     private void setLastError(String message) {
         lastError.set(message);
+    }
+
+    private void resetSchemaLookupError() {
+        schemaLookupError.remove();
+    }
+
+    private void markSchemaLookupFailure(Exception e) {
+        if (schemaLookupError.get() == null) {
+            schemaLookupError.set(DBConfig.userFriendlyMessage(e));
+        }
+    }
+
+    private String getSchemaLookupError() {
+        return schemaLookupError.get();
+    }
+
+    private void clearSchemaCache() {
+        COL_CACHE.clear();
+        TABLE_CACHE.clear();
+    }
+
+    public void warmLoginMetadata() {
+        setLastError(null);
+        resetSchemaLookupError();
+        resolveLoginSchema();
+    }
+
+    private boolean refreshSchemaIfNeeded(String id, String mail, String pass) {
+        if ((id != null && mail != null) || getSchemaLookupError() != null) {
+            return false;
+        }
+        clearSchemaCache();
+        resetSchemaLookupError();
+        return true;
     }
 
     private String findFirstExistingColumn(String table, String... candidates) {
@@ -41,8 +81,9 @@ public class UserDAO {
                 try (ResultSet rs = ps.executeQuery()) {
                     if (rs.next()) return candidate;
                 }
-            } catch (Exception ignored) {
-                // try next
+            } catch (Exception e) {
+                markSchemaLookupFailure(e);
+                
             }
         }
 
@@ -50,12 +91,14 @@ public class UserDAO {
     }
 
     private String cachedColumn(String key, Supplier<String> resolver) {
-        if (COL_CACHE.containsKey(key)) {
-            String cached = COL_CACHE.get(key);
-            return NULL_SENTINEL.equals(cached) ? null : cached;
+        String cached = COL_CACHE.get(key);
+        if (cached != null) {
+            return cached;
         }
         String resolved = resolver.get();
-        COL_CACHE.put(key, resolved == null ? NULL_SENTINEL : resolved);
+        if (resolved != null && getSchemaLookupError() == null) {
+            COL_CACHE.put(key, resolved);
+        }
         return resolved;
     }
 
@@ -75,8 +118,9 @@ public class UserDAO {
                         return rs.getString("column_name");
                     }
                 }
-            } catch (Exception ignored) {
-                // try next pattern
+            } catch (Exception e) {
+                markSchemaLookupFailure(e);
+                
             }
         }
         return null;
@@ -96,8 +140,9 @@ public class UserDAO {
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) return rs.getString("data_type");
             }
-        } catch (Exception ignored) {
-            // fallback
+        } catch (Exception e) {
+            markSchemaLookupFailure(e);
+            
         }
         return null;
     }
@@ -117,8 +162,8 @@ public class UserDAO {
                 TABLE_CACHE.put(table, exists);
                 return exists;
             }
-        } catch (Exception ignored) {
-            TABLE_CACHE.put(table, false);
+        } catch (Exception e) {
+            markSchemaLookupFailure(e);
             return false;
         }
     }
@@ -132,8 +177,8 @@ public class UserDAO {
 
     private String nameCol() {
         return cachedColumn("users.name", () -> {
-            String col = findFirstExistingColumn("users", "name", "full_name", "username", "user_name", "first_name");
-            return col != null ? col : findColumnByLike("users", "%name%");
+            String col = findFirstExistingColumn("users", "name", "full_name", "username", "user_name", "first_name", "display_name");
+            return col != null ? col : findColumnByLike("users", "%display%name%", "%full%name%", "%user%name%", "%name%");
         });
     }
 
@@ -163,22 +208,22 @@ public class UserDAO {
 
     private String emailCol() {
         return cachedColumn("users.email", () -> {
-            String col = findFirstExistingColumn("users", "email", "email_id", "mail", "emailid");
-            return col != null ? col : findColumnByLike("users", "%mail%");
+            String col = findFirstExistingColumn("users", "email", "email_id", "mail", "emailid", "user_email", "useremail", "email_address");
+            return col != null ? col : findColumnByLike("users", "%email%", "%mail%");
         });
     }
 
     private String idCol() {
         return cachedColumn("users.id", () -> {
-            String col = findFirstExistingColumn("users", "id", "user_id", "uid");
-            return col != null ? col : findColumnByLike("users", "%id");
+            String col = findFirstExistingColumn("users", "id", "user_id", "uid", "userid", "id_user");
+            return col != null ? col : findColumnByLike("users", "user%id", "%user%id%", "%id");
         });
     }
 
     private String passwordCol() {
         return cachedColumn("users.password", () -> {
-            String col = findFirstExistingColumn("users", "password", "pass", "pwd", "passwd", "user_password", "pass_word");
-            return col != null ? col : findColumnByLike("users", "%pass%", "%pwd%");
+            String col = findFirstExistingColumn("users", "password", "pass", "pwd", "passwd", "user_password", "pass_word", "userpass", "user_pass", "userpassword", "password_hash");
+            return col != null ? col : findColumnByLike("users", "%password%", "%pass%", "%pwd%", "%secret%");
         });
     }
 
@@ -190,6 +235,14 @@ public class UserDAO {
         return "ACTIVE";
     }
 
+    private String inactiveStatusValue(String statusColumn) {
+        String col = statusColumn == null ? "" : statusColumn.toLowerCase();
+        if (col.contains("active") || col.contains("enabled") || col.contains("flag")) {
+            return "0";
+        }
+        return "BLOCKED";
+    }
+
     private boolean isActiveStatus(String rawStatus) {
         if (rawStatus == null) return true;
         String s = rawStatus.trim().toUpperCase();
@@ -198,6 +251,27 @@ public class UserDAO {
                 "TRUE".equals(s) ||
                 "YES".equals(s) ||
                 "Y".equals(s);
+    }
+
+    private String normalizeStatusLabel(String rawStatus) {
+        if (rawStatus == null || rawStatus.isBlank()) {
+            return "ACTIVE";
+        }
+
+        String s = rawStatus.trim().toUpperCase();
+        if (isActiveStatus(s)) {
+            return "ACTIVE";
+        }
+        if ("0".equals(s)
+                || "FALSE".equals(s)
+                || "NO".equals(s)
+                || "N".equals(s)
+                || "INACTIVE".equals(s)
+                || "DISABLED".equals(s)
+                || "BLOCKED".equals(s)) {
+            return "BLOCKED";
+        }
+        return s;
     }
 
     private String readCol(ResultSet rs, String alias, String fallback) {
@@ -241,53 +315,227 @@ public class UserDAO {
                 readCol(rs, "name", "User"),
                 readCol(rs, "email", ""),
                 normalizeRole(readCol(rs, "role", Role.USER)),
-                readCol(rs, "status", "ACTIVE"),
+                normalizeStatusLabel(readCol(rs, "status", "ACTIVE")),
                 readCol(rs, "created_at", "")
         };
     }
 
-    public String[] loginUser(String email, String password) {
-        setLastError(null);
+    private String userDisplayNameExpr(String userAlias, String idColumn, String emailColumn, String nameColumn) {
+        String fallbackExpr = nameColumn != null
+                ? userAlias + "." + nameColumn
+                : userAlias + "." + emailColumn;
 
-        String id = idCol();
-        String name = nameCol();
-        String mail = emailCol();
-        String role = roleCol();
-        String status = statusCol();
-        String pass = passwordCol();
-
-        if (id == null || mail == null || pass == null) {
-            setLastError("Required user columns not found (id/email/password).");
-            return null;
+        if (idColumn == null || !tableExists("user_profiles")) {
+            return fallbackExpr;
         }
 
-        String displayNameExpr = name != null ? "u." + name : "u." + mail;
+        String profileName = userProfileNameCol();
+        if (profileName == null) {
+            return fallbackExpr;
+        }
 
-        if (tableExists("user_profiles")) {
-            String profileName = userProfileNameCol();
-            if (profileName != null) {
-                displayNameExpr =
-                        "COALESCE(NULLIF(TRIM(up." + profileName + "),''), " + displayNameExpr + ")";
+        return "COALESCE(NULLIF(TRIM(up." + profileName + "),''), " + fallbackExpr + ")";
+    }
+
+    private String userProfileJoinClause(String userAlias, String idColumn) {
+        if (idColumn == null || !tableExists("user_profiles")) {
+            return "";
+        }
+
+        String profileName = userProfileNameCol();
+        if (profileName == null) {
+            return "";
+        }
+
+        return " LEFT JOIN user_profiles up ON up.user_id = " + userAlias + "." + idColumn + " ";
+    }
+
+    private LoginSchema resolveLoginSchema() {
+        LoginSchema cached = LOGIN_SCHEMA_CACHE;
+        if (cached != null) {
+            return cached;
+        }
+
+        synchronized (LOGIN_SCHEMA_LOCK) {
+            cached = LOGIN_SCHEMA_CACHE;
+            if (cached != null) {
+                return cached;
+            }
+
+            String sql =
+                    "SELECT table_name, column_name FROM information_schema.columns " +
+                    "WHERE table_schema = DATABASE() AND table_name IN ('users', 'user_profiles')";
+
+            try (Connection con = DBConfig.getConnection();
+                 PreparedStatement ps = con.prepareStatement(sql);
+                 ResultSet rs = ps.executeQuery()) {
+
+                Set<String> userColumns = new HashSet<>();
+                Set<String> profileColumns = new HashSet<>();
+
+                while (rs.next()) {
+                    String tableName = rs.getString("table_name");
+                    String columnName = rs.getString("column_name");
+                    if (tableName == null || columnName == null) {
+                        continue;
+                    }
+
+                    String normalized = columnName.trim().toLowerCase();
+                    if ("users".equalsIgnoreCase(tableName)) {
+                        userColumns.add(normalized);
+                    } else if ("user_profiles".equalsIgnoreCase(tableName)) {
+                        profileColumns.add(normalized);
+                    }
+                }
+
+                LoginSchema schema = new LoginSchema();
+                schema.idCol = chooseColumn(userColumns,
+                        new String[]{"id", "user_id", "uid", "userid", "id_user"},
+                        "user%id", "%user%id%", "%id");
+                schema.nameCol = chooseColumn(userColumns,
+                        new String[]{"name", "full_name", "username", "user_name", "first_name", "display_name"},
+                        "%display%name%", "%full%name%", "%user%name%", "%name%");
+                schema.emailCol = chooseColumn(userColumns,
+                        new String[]{"email", "email_id", "mail", "emailid", "user_email", "useremail", "email_address"},
+                        "%email%", "%mail%");
+                schema.roleCol = chooseColumn(userColumns,
+                        new String[]{"role", "user_role", "type", "user_type", "role_id"},
+                        "%role%", "%type%");
+                schema.statusCol = chooseColumn(userColumns,
+                        new String[]{"status", "user_status", "is_active", "active", "enabled"},
+                        "%status%", "%active%", "%enabled%");
+                schema.passwordCol = chooseColumn(userColumns,
+                        new String[]{"password", "pass", "pwd", "passwd", "user_password", "pass_word", "userpass", "user_pass", "userpassword", "password_hash"},
+                        "%password%", "%pass%", "%pwd%", "%secret%");
+                schema.profileNameCol = chooseColumn(profileColumns,
+                        new String[]{"name", "full_name", "username", "user_name"},
+                        "%name%");
+                schema.hasUserProfiles = !profileColumns.isEmpty() && profileColumns.contains("user_id");
+
+                LOGIN_SCHEMA_CACHE = schema;
+                primeSchemaCaches(schema);
+                return schema;
+            } catch (Exception e) {
+                markSchemaLookupFailure(e);
+                return null;
+            }
+        }
+    }
+
+    private void primeSchemaCaches(LoginSchema schema) {
+        if (schema == null) {
+            return;
+        }
+
+        cacheResolvedColumn("users.id", schema.idCol);
+        cacheResolvedColumn("users.name", schema.nameCol);
+        cacheResolvedColumn("users.email", schema.emailCol);
+        cacheResolvedColumn("users.role", schema.roleCol);
+        cacheResolvedColumn("users.status", schema.statusCol);
+        cacheResolvedColumn("users.password", schema.passwordCol);
+        cacheResolvedColumn("user_profiles.name", schema.profileNameCol);
+
+        if (schema.hasUserProfiles) {
+            TABLE_CACHE.put("user_profiles", true);
+        }
+    }
+
+    private void cacheResolvedColumn(String key, String value) {
+        if (value != null && !value.isBlank()) {
+            COL_CACHE.put(key, value);
+        }
+    }
+
+    private String chooseColumn(Set<String> columns, String[] exactCandidates, String... likePatterns) {
+        for (String candidate : exactCandidates) {
+            String normalized = candidate == null ? null : candidate.trim().toLowerCase();
+            if (normalized != null && columns.contains(normalized)) {
+                return normalized;
             }
         }
 
+        for (String pattern : likePatterns) {
+            String resolved = firstMatchingPattern(columns, pattern);
+            if (resolved != null) {
+                return resolved;
+            }
+        }
+
+        return null;
+    }
+
+    private String firstMatchingPattern(Set<String> columns, String pattern) {
+        if (pattern == null || pattern.isBlank()) {
+            return null;
+        }
+
+        StringBuilder regex = new StringBuilder();
+        for (char ch : pattern.trim().toLowerCase().toCharArray()) {
+            if (ch == '%') {
+                regex.append(".*");
+            } else if (ch == '_') {
+                regex.append('.');
+            } else {
+                regex.append(Pattern.quote(String.valueOf(ch)));
+            }
+        }
+
+        String compiled = regex.toString();
+        for (String column : columns) {
+            if (column != null && column.matches(compiled)) {
+                return column;
+            }
+        }
+        return null;
+    }
+
+    public String[] loginUser(String email, String password) {
+        setLastError(null);
+        resetSchemaLookupError();
+
+        LoginSchema schema = resolveLoginSchema();
+        if (schema == null) {
+            setLastError(getSchemaLookupError());
+            return null;
+        }
+
+        if (schema.idCol == null || schema.emailCol == null || schema.passwordCol == null) {
+            if (getSchemaLookupError() != null) {
+                setLastError(getSchemaLookupError());
+                return null;
+            }
+            setLastError("Users table is missing required login columns (id/email/password).");
+            return null;
+        }
+
+        String displayNameExpr = schema.nameCol != null ? "u." + schema.nameCol : "u." + schema.emailCol;
+
+        if (schema.hasUserProfiles && schema.profileNameCol != null) {
+            displayNameExpr =
+                    "COALESCE(NULLIF(TRIM(up." + schema.profileNameCol + "),''), " + displayNameExpr + ")";
+        }
+
+        String profileJoin = schema.hasUserProfiles && schema.profileNameCol != null
+                ? "LEFT JOIN user_profiles up ON up.user_id = u." + schema.idCol + " "
+                : "";
+
         String sqlExact =
-                "SELECT u." + id + " AS id, " + displayNameExpr + " AS name, u." + mail + " AS email, " +
-                (role != null ? "u." + role : "'USER'") + " AS role, " +
-                (status != null ? "u." + status : "'ACTIVE'") + " AS status " +
+                "SELECT u." + schema.idCol + " AS id, " + displayNameExpr + " AS name, u." + schema.emailCol + " AS email, " +
+                (schema.roleCol != null ? "u." + schema.roleCol : "'USER'") + " AS role, " +
+                (schema.statusCol != null ? "u." + schema.statusCol : "'ACTIVE'") + " AS status " +
                 "FROM users u " +
-                (tableExists("user_profiles") ? "LEFT JOIN user_profiles up ON up.user_id = u." + id + " " : "") +
-                "WHERE u." + mail + "=? " +
-                "AND u." + pass + "=?";
+                profileJoin +
+                "WHERE u." + schema.emailCol + "=? " +
+                "AND u." + schema.passwordCol + "=?";
 
         String sqlFallback =
-                "SELECT u." + id + " AS id, " + displayNameExpr + " AS name, u." + mail + " AS email, " +
-                (role != null ? "u." + role : "'USER'") + " AS role, " +
-                (status != null ? "u." + status : "'ACTIVE'") + " AS status " +
+                "SELECT u." + schema.idCol + " AS id, " + displayNameExpr + " AS name, u." + schema.emailCol + " AS email, " +
+                (schema.roleCol != null ? "u." + schema.roleCol : "'USER'") + " AS role, " +
+                (schema.statusCol != null ? "u." + schema.statusCol : "'ACTIVE'") + " AS status " +
                 "FROM users u " +
-                (tableExists("user_profiles") ? "LEFT JOIN user_profiles up ON up.user_id = u." + id + " " : "") +
-                "WHERE LOWER(TRIM(u." + mail + "))=LOWER(TRIM(?)) " +
-                "AND TRIM(u." + pass + ")=TRIM(?)";
+                profileJoin +
+                "WHERE LOWER(TRIM(u." + schema.emailCol + "))=LOWER(TRIM(?)) " +
+                "AND TRIM(u." + schema.passwordCol + ")=TRIM(?)";
 
         try (Connection con = DBConfig.getConnection()) {
             try (PreparedStatement ps = con.prepareStatement(sqlExact)) {
@@ -312,7 +560,7 @@ public class UserDAO {
                 }
             }
 
-            // Compatibility fallback for trimmed/variant stored values
+            
             try (PreparedStatement ps = con.prepareStatement(sqlFallback)) {
                 ps.setString(1, email);
                 ps.setString(2, password);
@@ -335,8 +583,10 @@ public class UserDAO {
                 }
             }
         } catch (Exception e) {
-            setLastError(e.getMessage());
-            e.printStackTrace();
+            setLastError(DBConfig.userFriendlyMessage(e));
+            if (!DBConfig.isConnectionUnavailable(e)) {
+                e.printStackTrace();
+            }
         }
 
         if (getLastError().startsWith("Unknown")) {
@@ -345,8 +595,20 @@ public class UserDAO {
         return null;
     }
 
+    private static class LoginSchema {
+        String idCol;
+        String nameCol;
+        String emailCol;
+        String roleCol;
+        String statusCol;
+        String passwordCol;
+        String profileNameCol;
+        boolean hasUserProfiles;
+    }
+
     public boolean emailExists(String email) {
         setLastError(null);
+        resetSchemaLookupError();
 
         String mail = emailCol();
         if (mail == null) return false;
@@ -363,8 +625,8 @@ public class UserDAO {
             }
 
         } catch (Exception e) {
-            setLastError(e.getMessage());
-            e.printStackTrace();
+            setLastError(DBConfig.userFriendlyMessage(e));
+            DBConnectionUtil.logIfUnexpected(e);
         }
 
         return false;
@@ -372,6 +634,7 @@ public class UserDAO {
 
     public boolean registerUser(String name, String email, String password) {
         setLastError(null);
+        resetSchemaLookupError();
 
         if (emailExists(email)) {
             setLastError("Email already exists.");
@@ -471,8 +734,8 @@ public class UserDAO {
             return true;
 
         } catch (Exception e) {
-            setLastError(e.getMessage());
-            e.printStackTrace();
+            setLastError(DBConfig.userFriendlyMessage(e));
+            DBConnectionUtil.logIfUnexpected(e);
         }
 
         if (getLastError().startsWith("Unknown")) {
@@ -482,6 +745,8 @@ public class UserDAO {
     }
 
     public boolean addUser(String name, String email, String password, String role) {
+        setLastError(null);
+        resetSchemaLookupError();
 
         if (emailExists(email)) return false;
 
@@ -557,6 +822,15 @@ public class UserDAO {
                     userId = keys.getInt(1);
                 }
             }
+            if (nameCol == null && userId == -1 && idCol() != null) {
+                try (PreparedStatement q = con.prepareStatement(
+                        "SELECT " + idCol() + " FROM users WHERE " + emailCol + "=? ORDER BY " + idCol() + " DESC LIMIT 1")) {
+                    q.setString(1, email);
+                    try (ResultSet rs = q.executeQuery()) {
+                        if (rs.next()) userId = rs.getInt(1);
+                    }
+                }
+            }
             if (nameCol == null && userId > 0) {
                 insertUserProfile(con, userId, name);
             }
@@ -564,7 +838,8 @@ public class UserDAO {
             return true;
 
         } catch (Exception e) {
-            e.printStackTrace();
+            setLastError(DBConfig.userFriendlyMessage(e));
+            DBConnectionUtil.logIfUnexpected(e);
         }
 
         return false;
@@ -584,11 +859,13 @@ public class UserDAO {
                 ps.executeUpdate();
             }
         } catch (Exception ignored) {
-            // profile is optional for login/register success
+            
         }
     }
 
     public boolean changePassword(int userId, String oldPass, String newPass) {
+        setLastError(null);
+        resetSchemaLookupError();
 
         String id = idCol();
         String pass = passwordCol();
@@ -616,13 +893,16 @@ public class UserDAO {
             }
 
         } catch (Exception e) {
-            e.printStackTrace();
+            setLastError(DBConfig.userFriendlyMessage(e));
+            DBConnectionUtil.logIfUnexpected(e);
         }
 
         return false;
     }
 
     public boolean updatePasswordByEmail(String email, String newPass) {
+        setLastError(null);
+        resetSchemaLookupError();
 
         String mail = emailCol();
         String pass = passwordCol();
@@ -640,13 +920,16 @@ public class UserDAO {
             return ps.executeUpdate() > 0;
 
         } catch (Exception e) {
-            e.printStackTrace();
+            setLastError(DBConfig.userFriendlyMessage(e));
+            DBConnectionUtil.logIfUnexpected(e);
         }
 
         return false;
     }
 
     public String[] getUserById(int userId) {
+        setLastError(null);
+        resetSchemaLookupError();
 
         String id = idCol();
         String name = nameCol();
@@ -655,18 +938,34 @@ public class UserDAO {
         String status = statusCol();
         String created = createdAtCol();
 
-        if (id == null || name == null || mail == null) {
+        if (refreshSchemaIfNeeded(id, mail, null)) {
+            id = idCol();
+            name = nameCol();
+            mail = emailCol();
+            role = roleCol();
+            status = statusCol();
+            created = createdAtCol();
+        }
+
+        if (id == null || mail == null) {
+            if (getSchemaLookupError() != null) {
+                setLastError(getSchemaLookupError());
+            }
             return null;
         }
 
+        String displayNameExpr = userDisplayNameExpr("u", id, mail, name);
+        String join = userProfileJoinClause("u", id);
+
         String sql =
-                "SELECT " + id + " AS id," +
-                name + " AS name," +
-                mail + " AS email," +
-                (role != null ? role : "'USER'") + " AS role," +
-                (status != null ? status : "'ACTIVE'") + " AS status," +
-                (created != null ? created : "NULL") + " AS created_at " +
-                "FROM users WHERE " + id + "=?";
+                "SELECT u." + id + " AS id," +
+                displayNameExpr + " AS name," +
+                "u." + mail + " AS email," +
+                (role != null ? "u." + role : "'USER'") + " AS role," +
+                (status != null ? "u." + status : "'ACTIVE'") + " AS status," +
+                (created != null ? "u." + created : "NULL") + " AS created_at " +
+                "FROM users u" + join +
+                "WHERE u." + id + "=?";
 
         try (Connection con = DBConfig.getConnection();
              PreparedStatement ps = con.prepareStatement(sql)) {
@@ -680,13 +979,16 @@ public class UserDAO {
             }
 
         } catch (Exception e) {
-            e.printStackTrace();
+            setLastError(DBConfig.userFriendlyMessage(e));
+            DBConnectionUtil.logIfUnexpected(e);
         }
 
         return null;
     }
 
     public List<String[]> getAllUsers() {
+        setLastError(null);
+        resetSchemaLookupError();
 
         List<String[]> list = new ArrayList<>();
 
@@ -697,18 +999,34 @@ public class UserDAO {
         String status = statusCol();
         String created = createdAtCol();
 
-        if (id == null || name == null || mail == null) {
+        if (refreshSchemaIfNeeded(id, mail, null)) {
+            id = idCol();
+            name = nameCol();
+            mail = emailCol();
+            role = roleCol();
+            status = statusCol();
+            created = createdAtCol();
+        }
+
+        if (id == null || mail == null) {
+            if (getSchemaLookupError() != null) {
+                setLastError(getSchemaLookupError());
+            }
             return list;
         }
 
+        String displayNameExpr = userDisplayNameExpr("u", id, mail, name);
+        String join = userProfileJoinClause("u", id);
+
         String sql =
-                "SELECT " + id + " AS id," +
-                name + " AS name," +
-                mail + " AS email," +
-                (role != null ? role : "'USER'") + " AS role," +
-                (status != null ? status : "'ACTIVE'") + " AS status," +
-                (created != null ? created : "NULL") + " AS created_at " +
-                "FROM users ORDER BY " + id + " DESC";
+                "SELECT u." + id + " AS id," +
+                displayNameExpr + " AS name," +
+                "u." + mail + " AS email," +
+                (role != null ? "u." + role : "'USER'") + " AS role," +
+                (status != null ? "u." + status : "'ACTIVE'") + " AS status," +
+                (created != null ? "u." + created : "NULL") + " AS created_at " +
+                "FROM users u" + join +
+                "ORDER BY u." + id + " DESC";
 
         try (Connection con = DBConfig.getConnection();
              PreparedStatement ps = con.prepareStatement(sql);
@@ -719,16 +1037,20 @@ public class UserDAO {
             }
 
         } catch (Exception e) {
-            e.printStackTrace();
+            setLastError(DBConfig.userFriendlyMessage(e));
+            DBConnectionUtil.logIfUnexpected(e);
         }
 
         return list;
     }
 
     public boolean updateUserStatus(int userId, String statusValue) {
+        setLastError(null);
+        resetSchemaLookupError();
 
         String id = idCol();
         String status = statusCol();
+        String statusType = columnDataType("users", status);
 
         if (id == null || status == null) return false;
 
@@ -737,24 +1059,28 @@ public class UserDAO {
         try (Connection con = DBConfig.getConnection();
              PreparedStatement ps = con.prepareStatement(sql)) {
 
-            String dbValue = statusValue;
-            if ("is_active".equalsIgnoreCase(status)) {
-                dbValue = "ACTIVE".equalsIgnoreCase(statusValue) ? "1" : "0";
+            boolean active = "ACTIVE".equalsIgnoreCase(statusValue);
+            if (isNumericType(statusType)) {
+                ps.setInt(1, active ? 1 : 0);
+            } else {
+                String dbValue = active ? activeStatusValue(status) : inactiveStatusValue(status);
+                ps.setString(1, dbValue);
             }
-
-            ps.setString(1, dbValue);
             ps.setInt(2, userId);
 
             return ps.executeUpdate() > 0;
 
         } catch (Exception e) {
-            e.printStackTrace();
+            setLastError(DBConfig.userFriendlyMessage(e));
+            DBConnectionUtil.logIfUnexpected(e);
         }
 
         return false;
     }
 
     public boolean updateUserRole(int userId, String roleValue) {
+        setLastError(null);
+        resetSchemaLookupError();
 
         String id = idCol();
         String role = roleCol();
@@ -777,13 +1103,16 @@ public class UserDAO {
             return ps.executeUpdate() > 0;
 
         } catch (Exception e) {
-            e.printStackTrace();
+            setLastError(DBConfig.userFriendlyMessage(e));
+            DBConnectionUtil.logIfUnexpected(e);
         }
 
         return false;
     }
 
     public boolean deleteUser(int idValue) {
+        setLastError(null);
+        resetSchemaLookupError();
 
         String id = idCol();
         if (id == null) return false;
@@ -798,7 +1127,8 @@ public class UserDAO {
             return ps.executeUpdate() > 0;
 
         } catch (Exception e) {
-            e.printStackTrace();
+            setLastError(DBConfig.userFriendlyMessage(e));
+            DBConnectionUtil.logIfUnexpected(e);
         }
 
         return false;

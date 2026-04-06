@@ -9,12 +9,12 @@ public class Seat {
     private String status;
     private int userId;
 
-    // Status constants
+    
     public static final String STATUS_AVAILABLE = "AVAILABLE";
     public static final String STATUS_LOCKED = "LOCKED";
     public static final String STATUS_BOOKED = "BOOKED";
 
-    /* ================= CONSTRUCTORS ================= */
+    
 
     public Seat() {}
 
@@ -34,7 +34,7 @@ public class Seat {
         this.userId = userId;
     }
 
-    /* ================= GETTERS & SETTERS ================= */
+    
 
     public int getId() { return id; }
     public void setId(int id) { this.id = id; }
@@ -65,7 +65,7 @@ public class Seat {
         this.userId = userId;
     }
 
-    /* ================= HELPER METHODS ================= */
+    
 
     public boolean isAvailable() {
         return STATUS_AVAILABLE.equalsIgnoreCase(status);
@@ -79,9 +79,9 @@ public class Seat {
         return STATUS_BOOKED.equalsIgnoreCase(status);
     }
 
-    /* ================= BUSINESS LOGIC ================= */
+    
 
-    // 🔥 Lock seat
+    
     public boolean lockSeat(int userId) {
         if (isAvailable()) {
             this.status = STATUS_LOCKED;
@@ -91,7 +91,7 @@ public class Seat {
         return false;
     }
 
-    // 🔥 Release lock
+    
     public void releaseSeat() {
         if (isLocked()) {
             this.status = STATUS_AVAILABLE;
@@ -99,7 +99,7 @@ public class Seat {
         }
     }
 
-    // 🔥 Confirm booking
+    
     public boolean bookSeat(int userId) {
         if (isLocked() && this.userId == userId) {
             this.status = STATUS_BOOKED;
@@ -108,7 +108,7 @@ public class Seat {
         return false;
     }
 
-    /* ================= DEBUG ================= */
+    
 
     @Override
     public String toString() {

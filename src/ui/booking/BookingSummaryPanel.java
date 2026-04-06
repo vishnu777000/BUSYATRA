@@ -7,157 +7,129 @@ import util.Refreshable;
 
 import javax.swing.*;
 import java.awt.*;
-import java.util.stream.Collectors;
 
 public class BookingSummaryPanel extends JPanel implements Refreshable {
 
-private final MainFrame frame;
+    private final MainFrame frame;
 
-private JLabel tripLabel;
-private JLabel passengerLabel;
-private JLabel seatsLabel;
-private JLabel amountLabel;
+    private JLabel tripLabel;
+    private JLabel passengerLabel;
+    private JLabel seatsLabel;
+    private JLabel ticketIdsLabel;
+    private JLabel amountLabel;
 
-public BookingSummaryPanel(MainFrame frame){
+    public BookingSummaryPanel(MainFrame frame) {
+        this.frame = frame;
 
-    this.frame = frame;
+        setLayout(new BorderLayout(20, 20));
+        setBackground(UIConfig.BACKGROUND);
+        setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
 
-    setLayout(new BorderLayout(20,20));
-    setBackground(UIConfig.BACKGROUND);
-    setBorder(BorderFactory.createEmptyBorder(20,20,20,20));
+        add(header(), BorderLayout.NORTH);
+        add(center(), BorderLayout.CENTER);
+        add(actions(), BorderLayout.SOUTH);
+    }
 
-    add(header(),BorderLayout.NORTH);
-    add(center(),BorderLayout.CENTER);
-    add(actions(),BorderLayout.SOUTH);
-}
+    private JComponent header() {
+        JPanel panel = new JPanel();
+        panel.setOpaque(false);
+        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
 
-/* ================= HEADER ================= */
+        JLabel success = new JLabel("Booking Confirmed");
+        success.setFont(new Font("Segoe UI", Font.BOLD, 24));
+        success.setForeground(UIConfig.SUCCESS);
+        success.setAlignmentX(Component.CENTER_ALIGNMENT);
 
-private JComponent header(){
+        JLabel sub = new JLabel("Your ticket is ready");
+        sub.setFont(UIConfig.FONT_SMALL);
+        sub.setForeground(UIConfig.TEXT_LIGHT);
+        sub.setAlignmentX(Component.CENTER_ALIGNMENT);
 
-    JPanel p = new JPanel();
-    p.setOpaque(false);
-    p.setLayout(new BoxLayout(p,BoxLayout.Y_AXIS));
+        panel.add(success);
+        panel.add(Box.createVerticalStrut(5));
+        panel.add(sub);
 
-    JLabel success = new JLabel("Booking Confirmed ✅");
-    success.setFont(new Font("Segoe UI",Font.BOLD,24));
-    success.setForeground(UIConfig.SUCCESS);
-    success.setAlignmentX(Component.CENTER_ALIGNMENT);
+        return panel;
+    }
 
-    JLabel sub = new JLabel("Your ticket is ready");
-    sub.setFont(UIConfig.FONT_SMALL);
-    sub.setForeground(UIConfig.TEXT_LIGHT);
-    sub.setAlignmentX(Component.CENTER_ALIGNMENT);
+    private JComponent center() {
+        JPanel wrapper = new JPanel(new GridBagLayout());
+        wrapper.setOpaque(false);
 
-    p.add(success);
-    p.add(Box.createVerticalStrut(5));
-    p.add(sub);
+        JPanel card = new JPanel();
+        card.setLayout(new BoxLayout(card, BoxLayout.Y_AXIS));
+        card.setPreferredSize(new Dimension(420, 320));
+        UIConfig.styleCard(card);
 
-    return p;
-}
+        tripLabel = label(UIConfig.FONT_SUBTITLE);
+        passengerLabel = label(UIConfig.FONT_SMALL);
+        seatsLabel = label(UIConfig.FONT_SMALL);
+        ticketIdsLabel = label(UIConfig.FONT_SMALL);
 
-/* ================= CENTER ================= */
+        amountLabel = new JLabel();
+        amountLabel.setFont(new Font("Segoe UI", Font.BOLD, 26));
+        amountLabel.setForeground(UIConfig.SUCCESS);
 
-private JComponent center(){
+        card.add(tripLabel);
+        card.add(Box.createVerticalStrut(12));
+        card.add(passengerLabel);
+        card.add(Box.createVerticalStrut(10));
+        card.add(seatsLabel);
+        card.add(Box.createVerticalStrut(10));
+        card.add(ticketIdsLabel);
+        card.add(Box.createVerticalStrut(12));
+        card.add(new JSeparator());
+        card.add(Box.createVerticalStrut(12));
+        card.add(amountLabel);
+        card.add(Box.createVerticalStrut(15));
+        card.add(new RouteTimelinePanel(
+                BookingContext.routeId,
+                BookingContext.fromStop,
+                BookingContext.toStop
+        ));
 
-    JPanel wrapper = new JPanel(new GridBagLayout());
-    wrapper.setOpaque(false);
+        wrapper.add(card);
+        return wrapper;
+    }
 
-    JPanel card = new JPanel();
-    card.setLayout(new BoxLayout(card,BoxLayout.Y_AXIS));
-    card.setPreferredSize(new Dimension(420,300));
+    private JLabel label(Font font) {
+        JLabel label = new JLabel();
+        label.setFont(font);
+        return label;
+    }
 
-    UIConfig.styleCard(card);
+    private JComponent actions() {
+        JPanel panel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 12, 10));
+        panel.setOpaque(false);
 
-    tripLabel = label(UIConfig.FONT_SUBTITLE);
+        JButton viewBtn = new JButton("View Ticket");
+        viewBtn.setPreferredSize(new Dimension(200, 42));
+        UIConfig.primaryBtn(viewBtn);
+        viewBtn.addActionListener(e -> frame.showScreen(MainFrame.SCREEN_TICKET_PREVIEW));
 
-    passengerLabel = label(UIConfig.FONT_SMALL);
-    seatsLabel = label(UIConfig.FONT_SMALL);
+        panel.add(viewBtn);
+        return panel;
+    }
 
-    amountLabel = new JLabel();
-    amountLabel.setFont(new Font("Segoe UI",Font.BOLD,26));
-    amountLabel.setForeground(UIConfig.SUCCESS);
+    @Override
+    public void refreshData() {
+        tripLabel.setText(BookingContext.fromStop + " -> " + BookingContext.toStop);
+        passengerLabel.setText(
+                "Passenger : " +
+                BookingContext.passengerName +
+                " (" + BookingContext.passengerPhone + ")"
+        );
+        seatsLabel.setText("Seats : " + BookingContext.getSeatListString());
 
-    card.add(tripLabel);
-    card.add(Box.createVerticalStrut(12));
+        int ticketCount = BookingContext.getRecentTicketCount();
+        if (ticketCount > 1) {
+            ticketIdsLabel.setText("Ticket IDs : " + BookingContext.getTicketIdListString());
+        } else if (BookingContext.getPrimaryTicketId() > 0) {
+            ticketIdsLabel.setText("Ticket ID : " + BookingContext.getPrimaryTicketId());
+        } else {
+            ticketIdsLabel.setText("Ticket ID : Pending");
+        }
 
-    card.add(passengerLabel);
-    card.add(Box.createVerticalStrut(10));
-
-    card.add(seatsLabel);
-    card.add(Box.createVerticalStrut(12));
-
-    card.add(new JSeparator());
-    card.add(Box.createVerticalStrut(12));
-
-    card.add(amountLabel);
-    card.add(Box.createVerticalStrut(15));
-
-    card.add(new RouteTimelinePanel(
-            BookingContext.routeId,
-            BookingContext.fromStop,
-            BookingContext.toStop
-    ));
-
-    wrapper.add(card);
-
-    return wrapper;
-}
-
-private JLabel label(Font f){
-
-    JLabel l = new JLabel();
-    l.setFont(f);
-    return l;
-}
-
-/* ================= ACTIONS ================= */
-
-private JComponent actions(){
-
-    JPanel panel = new JPanel(new FlowLayout(FlowLayout.RIGHT,12,10));
-    panel.setOpaque(false);
-
-    JButton viewBtn = new JButton("View Ticket");
-    viewBtn.setPreferredSize(new Dimension(200,42));
-
-    UIConfig.primaryBtn(viewBtn);
-
-    viewBtn.addActionListener(e -> {
-        frame.showScreen(MainFrame.SCREEN_TICKET_PREVIEW);
-    });
-
-    panel.add(viewBtn);
-
-    return panel;
-}
-
-/* ================= REFRESH ================= */
-
-@Override
-public void refreshData(){
-
-    tripLabel.setText(
-            BookingContext.fromStop + " → " + BookingContext.toStop
-    );
-
-    passengerLabel.setText(
-            "Passenger : " +
-            BookingContext.passengerName +
-            " (" + BookingContext.passengerPhone + ")"
-    );
-
-    seatsLabel.setText(
-            "Seats : " +
-            BookingContext.copySelectedSeats()
-                    .stream()
-                    .sorted()
-                    .collect(Collectors.joining(", "))
-    );
-
-    amountLabel.setText(
-            "Total Paid : ₹ " + BookingContext.getFinalAmount()
-    );
-}
-
+        amountLabel.setText("Total Paid : INR " + String.format("%.2f", BookingContext.getFinalAmount()));
+    }
 }

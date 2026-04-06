@@ -197,11 +197,12 @@ public class ManagerDashboard extends JPanel implements Refreshable {
             @Override
             protected double[] doInBackground() {
                 AdminStatsDAO dao = new AdminStatsDAO();
+                AdminStatsDAO.StatsSnapshot snapshot = dao.getDashboardSnapshot();
                 return new double[]{
-                        dao.getTotalUsers(),
-                        dao.getTotalTickets(),
-                        dao.getCancelledTickets(),
-                        dao.getTotalRevenue()
+                        snapshot.users,
+                        snapshot.tickets,
+                        snapshot.cancelled,
+                        snapshot.revenue
                 };
             }
 
@@ -235,6 +236,11 @@ public class ManagerDashboard extends JPanel implements Refreshable {
             }
         };
         worker.execute();
+    }
+
+    @Override
+    public boolean refreshOnFirstShow() {
+        return false;
     }
 
     private void setBusy(boolean busy, String message) {

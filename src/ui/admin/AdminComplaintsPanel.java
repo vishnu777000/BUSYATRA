@@ -75,6 +75,7 @@ public class AdminComplaintsPanel extends JPanel implements Refreshable {
 
         JScrollPane sp = new JScrollPane(table);
         UIConfig.styleScroll(sp);
+        sp.setColumnHeaderView(table.getTableHeader());
 
         JPanel card = new JPanel(new BorderLayout());
         UIConfig.styleCard(card);
@@ -215,5 +216,10 @@ public class AdminComplaintsPanel extends JPanel implements Refreshable {
     public void refreshData() {
         replyArea.setText("");
         loadAllComplaints();
+    }
+
+    @Override
+    public boolean refreshOnFirstShow() {
+        return false;
     }
 }

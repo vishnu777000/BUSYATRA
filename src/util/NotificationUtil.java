@@ -3,19 +3,19 @@ package util;
 import javax.swing.*;
 import java.awt.*;
 
-/**
- * NotificationUtil
- * --------------------------------
- * Central utility for showing
- * user notifications across app
- */
+
+
+
+
+
+
 public class NotificationUtil {
 
     private NotificationUtil() {
-        // utility class
+        
     }
 
-    /* ================= BASIC ================= */
+    
 
     public static void info(String message) {
         show(message, "Info", JOptionPane.INFORMATION_MESSAGE);
@@ -33,7 +33,7 @@ public class NotificationUtil {
         show(message, "Error", JOptionPane.ERROR_MESSAGE);
     }
 
-    /* ================= CORE ================= */
+    
 
     private static void show(
             String message,
@@ -50,7 +50,7 @@ public class NotificationUtil {
         );
     }
 
-    /* ================= CONFIRM ================= */
+    
 
     public static boolean confirm(String message) {
         return JOptionPane.showConfirmDialog(

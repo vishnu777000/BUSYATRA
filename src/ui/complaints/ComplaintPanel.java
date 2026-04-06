@@ -265,4 +265,9 @@ public class ComplaintPanel extends JPanel implements Refreshable {
     public void refreshData() {
         loadMyComplaints();
     }
+
+    @Override
+    public boolean refreshOnFirstShow() {
+        return false;
+    }
 }

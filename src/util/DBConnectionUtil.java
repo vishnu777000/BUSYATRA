@@ -5,30 +5,44 @@ import config.DBConfig;
 import java.sql.Connection;
 import java.sql.SQLException;
 
-/**
- * DBConnectionUtil
- * ------------------------------------
- * Central JDBC connection helper.
- * Returns a fresh connection each call.
- */
+
+
+
+
+
+
 public class DBConnectionUtil {
 
     private DBConnectionUtil() {
-        // utility class
+        
     }
 
-    /* ================= GET CONNECTION ================= */
+    
 
     public static Connection getConnection() {
 
         try {
             return DBConfig.getConnection();
         } catch (SQLException e) {
-            throw new RuntimeException("Failed to get database connection", e);
+            throw new RuntimeException(DBConfig.userFriendlyMessage(e), e);
         }
     }
 
-    /* ================= CLOSE SINGLE ================= */
+    public static boolean isConnectionUnavailable(Throwable error) {
+        return DBConfig.isConnectionUnavailable(error);
+    }
+
+    public static String userMessage(Throwable error) {
+        return DBConfig.userFriendlyMessage(error);
+    }
+
+    public static void logIfUnexpected(Throwable error) {
+        if (error != null && !isConnectionUnavailable(error)) {
+            error.printStackTrace();
+        }
+    }
+
+    
 
     public static void close(Connection c) {
 
@@ -39,13 +53,13 @@ public class DBConnectionUtil {
                 c.close();
             }
         } catch (SQLException e) {
-            e.printStackTrace();
+            logIfUnexpected(e);
         }
     }
 
-    /* ================= CLOSE GLOBAL ================= */
+    
 
     public static void closeAll() {
-        // No-op. Connections are not globally cached anymore.
+        
     }
 }

@@ -14,11 +14,11 @@ public class Complaint {
 
     private LocalDateTime createdAt;
 
-    // Status constants
+    
     public static final String STATUS_OPEN = "OPEN";
     public static final String STATUS_RESOLVED = "RESOLVED";
 
-    /* ================= CONSTRUCTORS ================= */
+    
 
     public Complaint() {}
 
@@ -26,7 +26,7 @@ public class Complaint {
         this.userId = userId;
         this.category = category;
         this.message = message;
-        this.status = STATUS_OPEN; // 🔥 fixed
+        this.status = STATUS_OPEN; 
         this.createdAt = LocalDateTime.now();
     }
 
@@ -43,7 +43,7 @@ public class Complaint {
         this.createdAt = createdAt;
     }
 
-    /* ================= GETTERS & SETTERS ================= */
+    
 
     public int getId() { return id; }
     public void setId(int id) { this.id = id; }
@@ -72,7 +72,7 @@ public class Complaint {
     public void setAdminReply(String adminReply) {
         this.adminReply = adminReply;
 
-        // 🔥 auto resolve when admin replies
+        
         if (adminReply != null && !adminReply.trim().isEmpty()) {
             this.status = STATUS_RESOLVED;
         }
@@ -83,7 +83,7 @@ public class Complaint {
         this.createdAt = createdAt;
     }
 
-    /* ================= BUSINESS METHODS ================= */
+    
 
     public boolean isOpen() {
         return STATUS_OPEN.equalsIgnoreCase(status);
@@ -98,7 +98,7 @@ public class Complaint {
         this.status = STATUS_RESOLVED;
     }
 
-    /* ================= DEBUG ================= */
+    
 
     @Override
     public String toString() {

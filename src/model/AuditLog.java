@@ -10,7 +10,7 @@ public class AuditLog {
     private String description;
     private LocalDateTime actionTime;
 
-    /* ================= CONSTRUCTORS ================= */
+    
 
     public AuditLog() {}
 
@@ -30,7 +30,7 @@ public class AuditLog {
         this.actionTime = actionTime;
     }
 
-    /* ================= GETTERS ================= */
+    
 
     public int getId() {
         return id;
@@ -52,7 +52,7 @@ public class AuditLog {
         return actionTime;
     }
 
-    /* ================= SETTERS ================= */
+    
 
     public void setId(int id) {
         this.id = id;
@@ -74,9 +74,9 @@ public class AuditLog {
         this.actionTime = actionTime;
     }
 
-    /* ================= EXTRA (IMPORTANT) ================= */
+    
 
-    // 🔥 Convert to table row (useful for JTable directly)
+    
     public String[] toRow() {
         return new String[]{
                 String.valueOf(id),
@@ -87,7 +87,7 @@ public class AuditLog {
         };
     }
 
-    /* ================= DEBUG ================= */
+    
 
     @Override
     public String toString() {

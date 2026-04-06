@@ -10,7 +10,7 @@ import java.util.List;
 
 public class PaymentDAO {
 
-    /* ================= HELPERS ================= */
+    
 
     private double getDouble(String sql, int param) {
 
@@ -68,7 +68,7 @@ public class PaymentDAO {
         };
     }
 
-    /* ================= GET TICKET AMOUNT ================= */
+    
 
     public double getTicketAmount(int ticketId) {
 
@@ -77,7 +77,7 @@ public class PaymentDAO {
         return getDouble(sql, ticketId);
     }
 
-    /* ================= RECORD PAYMENT ================= */
+    
 
     public boolean recordPayment(int ticketId, String method, double amount) {
 
@@ -103,7 +103,7 @@ public class PaymentDAO {
         return false;
     }
 
-    /* ================= CHECK PAYMENT ================= */
+    
 
     public boolean isTicketPaid(int ticketId) {
 
@@ -114,7 +114,7 @@ public class PaymentDAO {
         return exists(sql, ticketId);
     }
 
-    /* ================= PAYMENT HISTORY ================= */
+    
 
     public List<String[]> getPaymentHistory(int userId) {
 
@@ -147,7 +147,7 @@ public class PaymentDAO {
         return list;
     }
 
-    /* ================= TOTAL PAYMENTS ================= */
+    
 
     public double getTotalPayments() {
 
